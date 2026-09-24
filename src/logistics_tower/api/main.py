@@ -1,18 +1,21 @@
 """
 FastAPI Server for Logistics Control Tower.
 Exposes multi-agent dispatch planning, Human-in-the-Loop breakpoint inspection,
-and MCP tools exploration.
+MCP tools exploration, and an Interactive Visual Dashboard with Leaflet map.
 """
 
+from pathlib import Path
 import uuid
 from typing import Any, Dict
 
 import uvicorn
 from fastapi import FastAPI, HTTPException, status
+from fastapi.responses import HTMLResponse
 from langgraph.types import Command
 
 from logistics_tower.api.schemas import DispatchRequest, DispatchResponse, ResumeHITLRequest
 from logistics_tower.config import settings
+from logistics_tower.db.repository import get_repository
 from logistics_tower.graph import build_logistics_graph
 from logistics_tower.mcp.client import get_mcp_client
 from logistics_tower.memory.short_term import get_session_checkpointer
@@ -26,6 +29,40 @@ app = FastAPI(
 # Shared in-memory checkpointer & compiled graph
 _checkpointer = get_session_checkpointer()
 _graph_app = build_logistics_graph(checkpointer=_checkpointer)
+
+_TEMPLATE_DIR = Path(__file__).resolve().parent / "templates"
+
+
+@app.get("/", response_class=HTMLResponse, tags=["Dashboard"])
+def get_dashboard():
+    """Serves the interactive visual dispatch control tower dashboard with Leaflet map."""
+    html_file = _TEMPLATE_DIR / "dashboard.html"
+    if html_file.exists():
+        return HTMLResponse(content=html_file.read_text(encoding="utf-8"))
+    return HTMLResponse("<h1>Logistics Control Tower Dashboard</h1><p>Template not found.</p>")
+
+
+@app.get("/api/dashboard-data", tags=["Dashboard"])
+def get_dashboard_data():
+    """Returns database fleet and pending orders for dashboard rendering."""
+    repo = get_repository()
+    return {
+        "cd_id": settings.default_cd_id,
+        "cd_name": settings.cd_name,
+        "cd_address": settings.cd_address,
+        "fleet": repo.get_available_fleet(settings.default_cd_id),
+        "orders": repo.get_pending_orders(settings.default_cd_id),
+    }
+
+
+@app.get("/api/thread-state/{thread_id}", tags=["Dashboard"])
+def get_thread_state(thread_id: str):
+    """Returns detailed state values (routes, loads) for map and table rendering."""
+    config = {"configurable": {"thread_id": thread_id}}
+    curr_state = _graph_app.get_state(config)
+    if not curr_state.values:
+        raise HTTPException(status_code=404, detail="Thread not found")
+    return curr_state.values
 
 
 @app.get("/health", tags=["Monitoring"])
@@ -52,6 +89,10 @@ def plan_dispatch(req: DispatchRequest):
     """
     thread_id = f"dispatch-{uuid.uuid4().hex[:8]}"
     config = {"configurable": {"thread_id": thread_id}}
+
+    # Reset orders to PENDING for the new run
+    repo = get_repository()
+    repo.reset_orders_status(req.cd_id)
 
     initial_state = {
         "cd_id": req.cd_id,

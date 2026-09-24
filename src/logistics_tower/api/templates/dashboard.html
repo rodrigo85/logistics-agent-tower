@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Torre de Controle Logístico - CD Itajaí (SC)</title>
+  
+  <!-- Tailwind CSS & Lucide Icons CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  
+  <!-- Leaflet CSS & JS for Interactive Map (Free / OpenStreetMap) -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <style>
+    #map { height: 500px; width: 100%; border-radius: 0.75rem; z-index: 10; }
+    .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+    .custom-scrollbar::-webkit-scrollbar-track { background: #1e293b; }
+    .custom-scrollbar::-webkit-scrollbar-thumb { background: #475569; border-radius: 3px; }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col font-sans">
+
+  <!-- Header -->
+  <header class="bg-slate-900 border-b border-slate-800 px-6 py-4 flex flex-wrap justify-between items-center shadow-lg">
+    <div class="flex items-center space-x-3">
+      <div class="bg-blue-600 p-2.5 rounded-xl shadow-blue-500/20 shadow-lg text-white">
+        <i data-lucide="truck" class="w-6 h-6"></i>
+      </div>
+      <div>
+        <div class="flex items-center space-x-2">
+          <h1 class="text-xl font-bold tracking-tight text-white">Torre de Controle Logístico & Roteirização</h1>
+          <span class="bg-blue-500/10 text-blue-400 text-xs px-2.5 py-0.5 rounded-full font-medium border border-blue-500/20">LangGraph Multi-Agent</span>
+          <span class="bg-emerald-500/10 text-emerald-400 text-xs px-2.5 py-0.5 rounded-full font-medium border border-emerald-500/20">Google OR-Tools</span>
+          <span class="bg-purple-500/10 text-purple-400 text-xs px-2.5 py-0.5 rounded-full font-medium border border-purple-500/20">MCP 2.x</span>
+        </div>
+        <p class="text-xs text-slate-400 mt-0.5 flex items-center">
+          <i data-lucide="map-pin" class="w-3.5 h-3.5 mr-1 text-red-400"></i>
+          CD Itajaí: <span class="text-slate-300 font-medium ml-1">Rod. Antônio Heil, 1001 - KM 1 - Itaipava, Itajaí - SC (CEP 88316-001)</span>
+        </p>
+      </div>
+    </div>
+
+    <!-- Actions & Links -->
+    <div class="flex items-center space-x-3 mt-3 sm:mt-0">
+      <a href="/docs" target="_blank" class="px-3 py-1.5 text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg border border-slate-700 transition flex items-center shadow-sm">
+        <i data-lucide="code" class="w-4 h-4 mr-1.5 text-blue-400"></i>
+        Swagger Docs
+      </a>
+      <button onclick="triggerDispatchPlan()" id="btnPlan" class="px-4 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white rounded-lg shadow-lg shadow-blue-600/30 transition flex items-center">
+        <i data-lucide="play" class="w-4 h-4 mr-1.5"></i>
+        Calcular Rotas (Multi-Agente)
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="flex-1 p-6 grid grid-cols-1 lg:grid-cols-3 gap-6 max-w-[1600px] w-full mx-auto">
+    
+    <!-- Coluna Esquerda & Centro: Mapa e Rotas (2 Cols) -->
+    <div class="lg:col-span-2 space-y-6">
+      
+      <!-- Interactive Map Card -->
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl">
+        <div class="flex justify-between items-center mb-3">
+          <div class="flex items-center space-x-2">
+            <i data-lucide="navigation" class="w-5 h-5 text-blue-400"></i>
+            <h2 class="font-bold text-white text-base">Mapa Operacional Georreferenciado (Itajaí, BC e Navegantes)</h2>
+          </div>
+          <div class="flex items-center space-x-4 text-xs">
+            <span class="flex items-center"><span class="w-3 h-3 rounded-full bg-blue-500 mr-1.5"></span> VUC Seco</span>
+            <span class="flex items-center"><span class="w-3 h-3 rounded-full bg-cyan-400 mr-1.5"></span> VUC Refrigerado</span>
+            <span class="flex items-center"><span class="w-3 h-3 rounded-full bg-amber-500 mr-1.5"></span> Caminhão Toco</span>
+          </div>
+        </div>
+        <div id="map"></div>
+      </div>
+
+      <!-- Tabela de Paradas e Sequenciamento -->
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl">
+        <div class="flex items-center justify-between mb-4">
+          <div class="flex items-center space-x-2">
+            <i data-lucide="list-ordered" class="w-5 h-5 text-emerald-400"></i>
+            <h2 class="font-bold text-white text-base">Sequenciamento Ótimo de Entregas (Google OR-Tools VRP)</h2>
+          </div>
+          <span id="routeSummaryBadge" class="text-xs text-slate-400 bg-slate-800 px-3 py-1 rounded-full border border-slate-700">Aguardando cálculo</span>
+        </div>
+        
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs text-slate-300">
+            <thead class="bg-slate-950 text-slate-400 uppercase tracking-wider border-b border-slate-800 font-semibold">
+              <tr>
+                <th class="py-3 px-4">Veículo</th>
+                <th class="py-3 px-3 text-center">Seq</th>
+                <th class="py-3 px-4">Cliente / Endereço</th>
+                <th class="py-3 px-3 text-center">Janela SLA</th>
+                <th class="py-3 px-3 text-center">Previsão (ETA)</th>
+                <th class="py-3 px-3 text-center">Status</th>
+              </tr>
+            </thead>
+            <tbody id="stopsTableBody" class="divide-y divide-slate-800/60 font-medium">
+              <tr>
+                <td colspan="6" class="text-center py-8 text-slate-500">
+                  Clique em "Calcular Rotas" para acionar os agentes e o solver matemático.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Coluna Direita: Frota, HITL Gate & Logs (1 Col) -->
+    <div class="space-y-6">
+
+      <!-- Human-in-the-Loop Alert & Action Box -->
+      <div id="hitlCard" class="hidden bg-amber-950/40 border border-amber-500/40 rounded-2xl p-5 shadow-xl shadow-amber-950/20">
+        <div class="flex items-start space-x-3">
+          <div class="bg-amber-500/20 p-2 rounded-xl text-amber-400">
+            <i data-lucide="shield-alert" class="w-6 h-6"></i>
+          </div>
+          <div class="flex-1">
+            <h3 class="font-bold text-amber-300 text-sm flex items-center justify-between">
+              Gate Human-in-the-Loop Acionado!
+              <span class="text-[10px] bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded border border-amber-500/30 uppercase">Requer Despachante</span>
+            </h3>
+            <p id="hitlReason" class="text-xs text-amber-200/90 mt-1 leading-relaxed">
+              Exceções operacionais detectadas pelo Risk Agent.
+            </p>
+          </div>
+        </div>
+
+        <div class="mt-4 pt-4 border-t border-amber-500/20 flex space-x-2">
+          <button onclick="respondHITL('APPROVED')" class="flex-1 py-2 px-3 text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg transition shadow-md flex items-center justify-center">
+            <i data-lucide="check-circle" class="w-4 h-4 mr-1.5"></i>
+            Aprovar Despacho
+          </button>
+          <button onclick="respondHITL('REJECTED')" class="flex-1 py-2 px-3 text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white rounded-lg transition shadow-md flex items-center justify-center">
+            <i data-lucide="x-circle" class="w-4 h-4 mr-1.5"></i>
+            Rejeitar / Ajustar
+          </button>
+        </div>
+      </div>
+
+      <!-- Final Manifest Card (Shown when confirmed) -->
+      <div id="manifestCard" class="hidden bg-emerald-950/40 border border-emerald-500/40 rounded-2xl p-5 shadow-xl">
+        <div class="flex items-center space-x-3 mb-2">
+          <div class="bg-emerald-500/20 p-2 rounded-xl text-emerald-400">
+            <i data-lucide="badge-check" class="w-6 h-6"></i>
+          </div>
+          <div>
+            <h3 class="font-bold text-emerald-300 text-sm">Manifesto Eletrônico Emitido</h3>
+            <p id="manifestIdText" class="text-xs text-emerald-400/80 font-mono">MAN-...</p>
+          </div>
+        </div>
+        <p id="manifestDetails" class="text-xs text-slate-300 mt-2 leading-relaxed"></p>
+      </div>
+
+      <!-- Status da Frota / Alocação -->
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl">
+        <div class="flex items-center space-x-2 mb-4">
+          <i data-lucide="boxes" class="w-5 h-5 text-indigo-400"></i>
+          <h2 class="font-bold text-white text-base">Ocupação da Frota do CD</h2>
+        </div>
+        <div id="fleetContainer" class="space-y-3.5">
+          <div class="text-xs text-slate-500 text-center py-4">Carregando frota do banco de dados...</div>
+        </div>
+      </div>
+
+      <!-- Execution Log do Squad Multi-Agente -->
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl">
+        <div class="flex items-center space-x-2 mb-3">
+          <i data-lucide="terminal" class="w-5 h-5 text-purple-400"></i>
+          <h2 class="font-bold text-white text-base">Log dos Agentes em Tempo Real</h2>
+        </div>
+        <div id="agentLogs" class="bg-slate-950 p-3.5 rounded-xl text-[11px] font-mono text-slate-400 h-48 overflow-y-auto custom-scrollbar space-y-1 border border-slate-800/80">
+          <p class="text-slate-600">> Sistema inicializado. Pronto para despachar.</p>
+        </div>
+      </div>
+
+    </div>
+
+  </main>
+
+  <script>
+    // Lucide Icons
+    lucide.createIcons();
+
+    // Map Initialization (Centered in Itajaí, SC)
+    const map = L.map('map').setView([-26.9200, -48.6650], 12);
+
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+      attribution: '&copy; OpenStreetMap &copy; CARTO',
+      maxZoom: 19
+    }).addTo(map);
+
+    // CD Depot Pin (Itaipava)
+    const depotIcon = L.divIcon({
+      className: 'bg-red-600 text-white rounded-full p-2 border-2 border-white shadow-xl flex items-center justify-center font-bold text-xs',
+      html: '🏢',
+      iconSize: [32, 32],
+      iconAnchor: [16, 16]
+    });
+
+    const depotMarker = L.marker([-26.9315, -48.7010], { icon: depotIcon }).addTo(map)
+      .bindPopup("<b>Centro de Distribuição Itajaí</b><br>Rod. Antônio Heil KM 1 - Itaipava");
+
+    let routeLayers = [];
+    let currentThreadId = null;
+
+    // Load Initial Data
+    async function loadDashboard() {
+      try {
+        const res = await fetch('/api/dashboard-data');
+        const data = await res.json();
+        renderFleetCards(data.fleet);
+      } catch (err) {
+        console.error(err);
+      }
+    }
+
+    function renderFleetCards(fleet, loads = []) {
+      const container = document.getElementById('fleetContainer');
+      container.innerHTML = '';
+
+      fleet.forEach(v => {
+        const load = loads.find(l => l.vehicle_id === v.vehicle_id);
+        const wPct = load ? load.weight_utilization_pct : 0;
+        const vPct = load ? load.volume_utilization_pct : 0;
+        const orderCount = load ? load.orders.length : 0;
+
+        const wColor = wPct > 90 ? 'bg-rose-500' : (wPct > 80 ? 'bg-amber-500' : 'bg-blue-500');
+        const vColor = vPct > 90 ? 'bg-rose-500' : (vPct > 80 ? 'bg-amber-500' : 'bg-emerald-500');
+
+        container.innerHTML += `
+          <div class="bg-slate-950 p-3 rounded-xl border border-slate-800">
+            <div class="flex justify-between items-start mb-2">
+              <div>
+                <span class="text-xs font-bold text-white">${v.vehicle_id}</span>
+                <span class="text-[10px] text-slate-400 block">${v.model} (${v.plate})</span>
+              </div>
+              <span class="text-[10px] font-semibold px-2 py-0.5 rounded-full ${v.has_refrigeration ? 'bg-cyan-500/10 text-cyan-300 border border-cyan-500/20' : 'bg-slate-800 text-slate-300'}">
+                ${v.has_refrigeration ? '❄️ Refrigerado' : '📦 Baú Seco'}
+              </span>
+            </div>
+            
+            <div class="space-y-1.5 text-[11px] text-slate-400">
+              <div class="flex justify-between text-[10px]">
+                <span>Peso: ${load ? load.total_weight_kg : 0} / ${v.max_weight_kg} kg</span>
+                <span class="font-bold ${wPct > 90 ? 'text-rose-400' : 'text-slate-300'}">${wPct}%</span>
+              </div>
+              <div class="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                <div class="${wColor} h-full transition-all duration-500" style="width: ${Math.min(wPct, 100)}%"></div>
+              </div>
+
+              <div class="flex justify-between text-[10px] pt-1">
+                <span>Cubagem: ${load ? load.total_volume_m3 : 0} / ${v.max_volume_m3} m³</span>
+                <span class="font-bold ${vPct > 90 ? 'text-rose-400' : 'text-slate-300'}">${vPct}%</span>
+              </div>
+              <div class="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                <div class="${vColor} h-full transition-all duration-500" style="width: ${Math.min(vPct, 100)}%"></div>
+              </div>
+            </div>
+          </div>
+        `;
+      });
+    }
+
+    async function triggerDispatchPlan() {
+      const btn = document.getElementById('btnPlan');
+      btn.disabled = true;
+      btn.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 mr-1.5 animate-spin"></i> Planejando...`;
+      lucide.createIcons();
+
+      const logBox = document.getElementById('agentLogs');
+      logBox.innerHTML = '<p class="text-blue-400">> Iniciando Squad de Agentes no LangGraph...</p>';
+
+      try {
+        const res = await fetch('/dispatch/plan', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ cd_id: 'CD-ITAJAI-SC01', auto_approve: false })
+        });
+        const data = await res.json();
+        currentThreadId = data.thread_id;
+
+        // Populate logs
+        data.execution_log.forEach(l => {
+          logBox.innerHTML += `<p class="text-slate-300">> ${l}</p>`;
+        });
+        logBox.scrollTop = logBox.scrollHeight;
+
+        // Fetch full state for dashboard
+        const stRes = await fetch(`/api/thread-state/${currentThreadId}`);
+        const stData = await stRes.json();
+
+        renderFleetCards(stData.available_fleet, stData.load_allocation);
+        renderRoutesOnMap(stData.routes);
+        renderStopsTable(stData.routes);
+
+        // Check HITL gate
+        if (data.status === 'AWAITING_HUMAN_APPROVAL') {
+          document.getElementById('hitlCard').classList.remove('hidden');
+          document.getElementById('hitlReason').innerText = data.approval_reason || 'Inconsistência operacional detectada.';
+        } else if (data.status === 'COMPLETED') {
+          showManifest(data.manifest);
+        }
+
+      } catch (err) {
+        console.error(err);
+        logBox.innerHTML += `<p class="text-red-400">> Erro: ${err.message}</p>`;
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = `<i data-lucide="play" class="w-4 h-4 mr-1.5"></i> Recalcular Rotas`;
+        lucide.createIcons();
+      }
+    }
+
+    async function respondHITL(verdict) {
+      if (!currentThreadId) return;
+
+      const logBox = document.getElementById('agentLogs');
+      logBox.innerHTML += `<p class="text-amber-400">> Enviando resposta do despachante: ${verdict}...</p>`;
+
+      try {
+        const res = await fetch('/dispatch/resume', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            thread_id: currentThreadId,
+            verdict: verdict,
+            feedback: verdict === 'APPROVED' ? 'Aprovado pelo despachante no painel' : 'Cancelado pelo despachante'
+          })
+        });
+        const data = await res.json();
+
+        document.getElementById('hitlCard').classList.add('hidden');
+
+        data.execution_log.forEach(l => {
+          logBox.innerHTML += `<p class="text-emerald-400">> ${l}</p>`;
+        });
+        logBox.scrollTop = logBox.scrollHeight;
+
+        if (data.status === 'COMPLETED' && data.manifest) {
+          showManifest(data.manifest);
+        } else {
+          alert('Despacho cancelado pelo operador.');
+        }
+      } catch (err) {
+        alert(err.message);
+      }
+    }
+
+    function showManifest(manifest) {
+      const card = document.getElementById('manifestCard');
+      card.classList.remove('hidden');
+      document.getElementById('manifestIdText').innerText = manifest.manifest_id;
+      document.getElementById('manifestDetails').innerHTML = `
+        <strong>${manifest.total_orders_dispatched}</strong> pedidos despachados em <strong>${manifest.total_vehicles_assigned}</strong> veículos.<br>
+        Peso: <strong>${manifest.total_weight_kg} kg</strong> | Cubagem: <strong>${manifest.total_volume_m3} m³</strong>
+      `;
+    }
+
+    function renderRoutesOnMap(routes) {
+      // Clear previous layers
+      routeLayers.forEach(l => map.removeLayer(l));
+      routeLayers = [];
+
+      const colors = {
+        'VEH-ITJ-VUC-01': '#3b82f6',
+        'VEH-ITJ-REF-02': '#22d3ee',
+        'VEH-ITJ-TOCO-03': '#f59e0b'
+      };
+
+      const depot = [-26.9315, -48.7010];
+
+      routes.forEach(r => {
+        const color = colors[r.vehicle_id] || '#8b5cf6';
+        const points = [depot];
+
+        r.stops.forEach(s => {
+          points.push([s.lat, s.lng]);
+
+          // Marker for stop
+          const marker = L.circleMarker([s.lat, s.lng], {
+            radius: 7,
+            fillColor: color,
+            color: '#fff',
+            weight: 2,
+            opacity: 1,
+            fillOpacity: 0.9
+          }).addTo(map);
+
+          marker.bindPopup(`
+            <b class="text-slate-900">${s.sequence}. ${s.customer_name}</b><br>
+            <span class="text-xs text-slate-600">${s.address}</span><br>
+            <span class="text-xs">Janela: ${s.window_start}-${s.window_end} | ETA: <b>${s.estimated_arrival}</b></span>
+          `);
+
+          routeLayers.push(marker);
+        });
+
+        points.push(depot);
+
+        const poly = L.polyline(points, {
+          color: color,
+          weight: 4,
+          opacity: 0.85,
+          dashArray: r.vehicle_id === 'VEH-ITJ-REF-02' ? '6, 6' : null
+        }).addTo(map);
+
+        routeLayers.push(poly);
+      });
+    }
+
+    function renderStopsTable(routes) {
+      const tbody = document.getElementById('stopsTableBody');
+      tbody.innerHTML = '';
+
+      let totalKm = 0;
+      let stopCount = 0;
+
+      routes.forEach(r => {
+        totalKm += r.total_distance_km;
+        r.stops.forEach(s => {
+          stopCount++;
+          const badge = s.on_time 
+            ? '<span class="px-2 py-0.5 rounded text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">✓ No Prazo</span>'
+            : '<span class="px-2 py-0.5 rounded text-[10px] bg-rose-500/10 text-rose-400 border border-rose-500/20">✗ Atraso</span>';
+
+          tbody.innerHTML += `
+            <tr class="hover:bg-slate-800/40 transition">
+              <td class="py-3 px-4 font-bold text-slate-200">${r.vehicle_id}</td>
+              <td class="py-3 px-3 text-center text-slate-400">${s.sequence}</td>
+              <td class="py-3 px-4">
+                <div class="text-slate-100 font-semibold">${s.customer_name}</div>
+                <div class="text-[10px] text-slate-400">${s.address}</div>
+              </td>
+              <td class="py-3 px-3 text-center text-slate-300 font-mono">${s.window_start} - ${s.window_end}</td>
+              <td class="py-3 px-3 text-center font-bold text-blue-400 font-mono">${s.estimated_arrival}</td>
+              <td class="py-3 px-3 text-center">${badge}</td>
+            </tr>
+          `;
+        });
+      });
+
+      document.getElementById('routeSummaryBadge').innerText = `${stopCount} paradas | ${totalKm.toFixed(1)} km rodados`;
+    }
+
+    loadDashboard();
+  </script>
+</body>
+</html>
