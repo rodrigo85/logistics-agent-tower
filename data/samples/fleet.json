@@ -1,0 +1,41 @@
+[
+  {
+    "vehicle_id": "VEH-ITJ-VUC-01",
+    "plate": "RLS7B14",
+    "model": "Iveco Daily 35S14 Baú Seco (VUC)",
+    "vehicle_type": "VUC",
+    "max_weight_kg": 1600.0,
+    "max_volume_m3": 11.0,
+    "has_refrigeration": false,
+    "driver_name": "Carlos Eduardo da Silva",
+    "driver_shift_max_hours": 8.0,
+    "current_status": "AVAILABLE",
+    "permitted_zones": ["ITAJAI_CENTRO", "FAZENDA", "PRAIA_BRAVA", "BALNEARIO_CAMBORIU"]
+  },
+  {
+    "vehicle_id": "VEH-ITJ-REF-02",
+    "plate": "MKF9C32",
+    "model": "Hyundai HR Refrigerado Termo King (VUC)",
+    "vehicle_type": "VUC",
+    "max_weight_kg": 1500.0,
+    "max_volume_m3": 9.5,
+    "has_refrigeration": true,
+    "driver_name": "Marcos Vinicius Santos",
+    "driver_shift_max_hours": 8.0,
+    "current_status": "AVAILABLE",
+    "permitted_zones": ["ITAJAI_CENTRO", "FAZENDA", "BALNEARIO_CAMBORIU", "SAO_VICENTE"]
+  },
+  {
+    "vehicle_id": "VEH-ITJ-TOCO-03",
+    "plate": "QJQ4E88",
+    "model": "Mercedes-Benz Atego 1419 Baú (Toco)",
+    "vehicle_type": "TOCO",
+    "max_weight_kg": 6000.0,
+    "max_volume_m3": 32.0,
+    "has_refrigeration": false,
+    "driver_name": "Roberto Almeida",
+    "driver_shift_max_hours": 9.0,
+    "current_status": "AVAILABLE",
+    "permitted_zones": ["CORDEIROS", "BR_101", "ROD_ANTONIO_HEIL", "NAVEGANTES"]
+  }
+]

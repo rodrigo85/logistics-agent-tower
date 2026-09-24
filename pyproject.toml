@@ -1,0 +1,60 @@
+[build-system]
+requires = ["setuptools>=75", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "logistics-agent-tower"
+version = "1.0.0"
+description = "Autonomous Multi-Agent Control Tower for CD Delivery Dispatch & Route Optimization with LangGraph, MCP, HITL and GCP."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Rodrigo Andreatta da Costa" }]
+dependencies = [
+    "langgraph>=1.2.12",
+    "langchain-core>=0.3.0",
+    "pydantic>=2.7.0",
+    "pydantic-settings>=2.2.0",
+    "python-dotenv>=1.0.0",
+    "rich>=13.7.0",
+    "fastapi>=0.110.0",
+    "uvicorn[standard]>=0.29.0",
+    "typing_extensions>=4.10.0",
+]
+
+[project.optional-dependencies]
+gcp = [
+    "langchain-google-genai>=2.0.0",
+    "google-cloud-bigquery>=3.20.0",
+]
+openai = [
+    "langchain-openai>=0.2.0",
+]
+ollama = [
+    "langchain-ollama>=0.2.0",
+]
+mcp = [
+    "mcp>=1.0.0",
+]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "httpx>=0.27.0",
+    "ruff>=0.3.0",
+]
+
+[project.scripts]
+logistics-tower = "logistics_tower.cli:main"
+logistics-tower-api = "logistics_tower.api.main:start"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+src = ["src", "tests"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"

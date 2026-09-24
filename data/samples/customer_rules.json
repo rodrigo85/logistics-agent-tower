@@ -1,0 +1,32 @@
+[
+  {
+    "customer_name": "Supermercado Bistek - Fazenda",
+    "rule_category": "ACCESS_RESTRICTION",
+    "content": "Rua residencial e rampa de doca estreita no bairro Fazenda. Apenas veículos de porte VUC autorizados. Proibido caminhão Truck.",
+    "effective_priority": "CRITICAL"
+  },
+  {
+    "customer_name": "Komprão Koch Atacadista - Cordeiros",
+    "rule_category": "DOCK_WINDOW",
+    "content": "Congestionamento intenso de carretas na Av. Reinaldo Schmithausen após 09:00. Priorizar descarga entre 06:00 e 08:30.",
+    "effective_priority": "HIGH"
+  },
+  {
+    "customer_name": "Frigorífico & Pescados Costa Sul - Porto",
+    "rule_category": "COLD_CHAIN",
+    "content": "Exige controle estrito de cadeia de frio. Conferência de temperatura obrigatória antes do descarregamento na doca portuária.",
+    "effective_priority": "CRITICAL"
+  },
+  {
+    "customer_name": "Angeloni Supermercados - Quarta Avenida",
+    "rule_category": "TIME_WINDOW_TRAFFIC",
+    "content": "Trânsito de entrada em Balneário Camboriú complica após 08:30 pela BR-101. Agendar primeira parada da manhã.",
+    "effective_priority": "HIGH"
+  },
+  {
+    "customer_name": "Armazém & Adega Brava Beach",
+    "rule_category": "SECURITY_AND_RESTRICTION",
+    "content": "Av. da praia tem restrição diurna para caminhões pesados (Decreto Municipal). Apenas VUC permitido. Carga de alto valor (vinhos finos).",
+    "effective_priority": "CRITICAL"
+  }
+]
