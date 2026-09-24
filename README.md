@@ -1,158 +1,237 @@
-# 🚚 Logistics Agent Tower
+<h1 align="center">🚚 Logistics Agent Tower</h1>
 
-### Autonomous Multi-Agent Control Tower for Distribution Center (CD) Dispatch & Route Optimization
-**Powered by LangGraph, Google OR-Tools (CVRPTW), Model Context Protocol (MCP 2.x), Human-in-the-Loop & PostgreSQL**
+<p align="center">
+  <strong>Autonomous multi-agent control tower for distribution-center dispatch and route optimization.</strong><br/>
+  LangGraph orchestration · Google OR-Tools CVRPTW · Model Context Protocol · Human-in-the-Loop · FastAPI dashboard
+</p>
 
-[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
-[![LangGraph](https://img.shields.io/badge/orchestration-LangGraph-orange.svg)](https://langchain-ai.github.io/langgraph/)
-[![Google OR-Tools](https://img.shields.io/badge/solver-Google%20OR--Tools%20(VRP)-green.svg)](https://developers.google.com/optimization)
-[![MCP 2.x](https://img.shields.io/badge/protocol-MCP%202.x%20(Official)-purple.svg)](https://modelcontextprotocol.io)
-[![PostgreSQL](https://img.shields.io/badge/database-PostgreSQL%2016-blue.svg)](https://www.postgresql.org/)
-[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+<p align="center">
+  <a href="https://github.com/rodrigo85/logistics-agent-tower/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/rodrigo85/logistics-agent-tower/actions/workflows/ci.yml/badge.svg"></a>
+  <img alt="Python 3.10+" src="https://img.shields.io/badge/python-3.10%2B-blue.svg">
+  <a href="https://github.com/astral-sh/ruff"><img alt="Ruff" src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json"></a>
+  <img alt="mypy" src="https://img.shields.io/badge/typing-mypy-blue.svg">
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-green.svg"></a>
+</p>
 
----
-
-## 🎯 Visão Geral & Problema de Negócio
-
-Em grandes operações de logística e varejo (nível Mercado Livre, Ambev, DHL), despachar centenas de entregas diariamente a partir de um **Centro de Distribuição (CD)** envolve um equilíbrio complexo de restrições operacionais:
-* Capacidade física e volumétrica dos veículos (peso em kg e cubagem em $m^3$);
-* Controle rígido de cadeia de frio (cargas refrigeradas isoladas em veículos térmicos);
-* Janelas de recebimento dos clientes (Time Windows / SLAs);
-* Idiossincrasias e restrições de doca dos clientes (rampas estreitas, proibições de caminhões pesados em bairros residenciais ou litorâneos).
-
-O **`Logistics Agent Tower`** é uma plataforma corporativa autônoma sediada no **Centro de Distribuição de Itajaí - SC** (*Rod. Antônio Heil, 1001 - KM 1 - Itaipava, Itajaí - SC*), que orquestra um esquadrão de agentes especializados para agrupar cargas, resolver a roteirização ótima e acionar supervisão humana antes da emissão do manifesto de transporte.
+<p align="center">
+  🇧🇷 <a href="README.pt-BR.md">Leia em Português</a>
+</p>
 
 ---
 
-## 🏛️ Arquitetura do Sistema
+## What it does
+
+Every morning a cold-chain distribution center in Itajaí (SC, Brazil) has to deliver
+40+ refrigerated orders to supermarkets, grocery stores, bakeries, butchers and similar
+retailers with five refrigerated trucks. Each truck leaves once, at 06:00, on a
+multi-stop route; customers have receiving windows and dock restrictions; drivers
+must take lunch and stay inside the legal shift; and a human dispatcher signs off
+when something looks risky.
+
+This project automates that planning cycle end to end:
+
+1. **Fleet agent** clusters nearby customers into one route per truck (geographic sweep, never above 100% capacity, VUC-only streets honoured).
+2. **Routing agent** sequences each route with **Google OR-Tools** (TSP with time windows), using live traffic per leg when available, and builds the driver's itinerary (loading, stops, lunch, return).
+3. **Risk agent** audits overloads, missed windows, shift limits, unallocated orders and high-value cargo.
+4. **Human-in-the-Loop gate** pauses the LangGraph run and waits for an `APPROVED` / `REJECTED` verdict via API, dashboard or CLI.
+5. **Supervisor** emits the electronic dispatch manifest and persists it to SQL.
+
+## Highlights
+
+| Capability | Implementation |
+|------------|----------------|
+| Multi-agent orchestration with pause/resume | LangGraph `StateGraph` + `interrupt()` + checkpointer; threads resumed across HTTP requests |
+| Combinatorial optimisation | Sweep clustering + OR-Tools TSPTW (Guided Local Search) with haversine or Google Routes API v2 travel times |
+| Tool boundary | Model Context Protocol: same tools exposed in-process to agents and over stdio to external AI clients |
+| Persistence | SQLAlchemy 2.0, SQLite locally, PostgreSQL 16 in Docker/Cloud SQL, idempotent seeder with 56 regional customers |
+| Operator UX | FastAPI + Leaflet dashboard with map, itineraries and HITL controls; Rich terminal CLI |
+| Engineering hygiene | CI on Ubuntu + Windows, ruff, mypy, pytest with coverage, pre-commit, Dependabot, ADRs |
+| Cloud-ready | Multi-stage non-root Docker image, Compose stack, Terraform for Cloud Run + Cloud SQL + Secret Manager + BigQuery |
+
+<!-- Add a dashboard screenshot at docs/images/dashboard.png and uncomment:
+<p align="center"><img src="docs/images/dashboard.png" width="900" alt="Dispatch dashboard"></p>
+-->
+
+## Architecture
 
 ```mermaid
 flowchart TD
-    User([Despachante / Operador de Transporte]) --> CLI["🖥️ Rich Terminal Dashboard / FastAPI"]
-    
-    subgraph MultiAgent["🤖 Squad Multi-Agente (LangGraph DAG)"]
-        SupInit[Supervisor: Inicialização & Memória] --> Fleet[Agente de Frota & Cubagem]
-        Fleet --> Route[Agente Roteirizador CVRPTW]
-        Route --> Risk[Agente de SLA & Risco]
-        Risk --> HITL{Human-in-the-Loop<br/><i>LangGraph interrupt()</i>}
+    User([Dispatcher]) --> UI["Web dashboard (FastAPI + Leaflet) / CLI"]
+
+    subgraph Graph["LangGraph multi-agent DAG"]
+        Init[Supervisor: init + long-term memory] --> Fleet[Fleet agent: sweep clustering]
+        Fleet --> Route[Routing agent: OR-Tools TSPTW]
+        Route --> Risk[Risk agent: SLA / shift / capacity audit]
+        Risk --> HITL{Human-in-the-Loop<br/>interrupt}
     end
 
-    subgraph Optimization["⚙️ Otimização Combinatória de Produção"]
-        Route <--> ORTools["<b>Google OR-Tools</b><br/>Solver C++ para CVRPTW com Janelas de Tempo"]
+    subgraph Tools["Model Context Protocol"]
+        MCP[WMS / TMS tools & resources]
     end
 
-    subgraph Protocol["🔌 Protocolo Oficial MCP 2.x (Model Context Protocol)"]
-        Fleet & Route <--> MCPServer["Servidor MCP WMS / TMS<br/>(Tools & Resources padronizados)"]
+    subgraph Data["Data layer"]
+        DB[("SQLAlchemy 2.0<br/>SQLite / PostgreSQL")]
+        Maps[Google Routes API v2<br/>optional live traffic]
     end
 
-    subgraph DataLayer["💾 Camada de Persistência Relacional"]
-        MCPServer <--> DB[("<b>PostgreSQL 16 / SQLAlchemy 2.0</b><br/>Clientes, Frota, Pedidos, Regras de Doca")]
-    end
-
-    HITL -->|Sobrecarga ou Atraso Crítico| Pause[Pausa da Execução / Alerta]
-    Pause -->|Decisão do Operador| Resume[Retomada via Command resume]
-    Resume --> SupEnd[Supervisor: Emissão de Manifesto]
-    HITL -->|Conforme| SupEnd
-    SupEnd --> Manifest([Manifesto Eletrônico de Despacho Persistido])
+    UI --> Init
+    Fleet & Route <--> MCP
+    MCP <--> DB
+    Route <--> Maps
+    HITL -->|APPROVED| Final[Supervisor: manifest]
+    HITL -->|REJECTED| Cancel[Dispatch cancelled]
+    Final --> Manifest([Dispatch manifest persisted])
 ```
 
----
+Deeper dive: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) and the [ADRs](docs/adr/README.md).
 
-## 🚀 Capacidades & Diferenciais Técnicos
+## Quick start
 
-| Pilar | Implementação Enterprise | Benefício / Por que importa |
-| :--- | :--- | :--- |
-| **Orquestração Multi-Agente** | **LangGraph v1.2+** com grafo acíclico direcionado (DAG), isolamento de papéis e máquina de estados tipada com Pydantic v2 | Separação limpa de responsabilidades entre frotas, roteirização e auditoria de riscos. |
-| **Otimização Combinatória** | **Google OR-Tools (CVRPTW)** modelando janelas de tempo, capacidades e tempos de descarregamento | Substitui heurísticas simplórias por um solver matemático de classe mundial (usado pelo Google e Tier-1 logística). |
-| **Integração de Ferramentas** | **Model Context Protocol (MCP 2.x)** com `MCPServer` oficial expondo tools e resources operacionais | Padronização aberta da indústria que permite a qualquer agente consumir o WMS/TMS de forma desacoplada. |
-| **Human-in-the-Loop (HITL)** | `interrupt()` nativo do LangGraph com **Checkpointer persistente** e retomada via `Command(resume=...)` | Tolerância a falhas e governança: se houver risco de SLA ou excesso de carga, o humano é consultado antes do despacho. |
-| **Memória de Longo Prazo** | Tabela relacional de regras operacionais e idiossincrasias de clientes (`customer_rules`) | O agente lembra de restrições de doca (ex: *"Bistek Fazenda só aceita VUC devido à rampa"*). |
-| **Persistência Relacional** | **PostgreSQL 16** via Docker Compose + **SQLAlchemy 2.0 ORM** com tipagem estrita | Integridade referencial real, transações ACID e consultas indexadas (sem arquivos texto ou CSVs soltos). |
-| **Infraestrutura em Nuvem (IaC)** | Módulos **Terraform para Google Cloud Platform (GCP)** em `infra/terraform/gcp/` | Cloud Run, Cloud SQL (PostgreSQL), Artifact Registry e BigQuery prontos para produção. |
+### Windows (one click)
 
----
+Double-click **`scripts\setup.bat`** (creates `.venv`, installs, seeds the database, runs the tests),
+then **`scripts\run.bat`**. Or from PowerShell:
 
-## 📍 Cenário Operacional: CD Itajaí - SC
+```powershell
+.\scripts\setup.ps1
+.\scripts\run.ps1
+```
 
-O protótipo opera com clientes e restrições geográficas reais de **Itajaí - SC e pólos adjacentes**:
-* **Centro de Distribuição (Depot)**: *Rod. Antônio Heil, 1001 - KM 1 - Itaipava, Itajaí - SC* (Acesso estratégico à BR-101 e SC-486).
-* **Clientes Cadastrados no Banco**:
-  1. `Supermercado Bistek` (Bairro Fazenda, Itajaí) — *Restrição de rampa estreita: apenas VUC permitido*.
-  2. `Komprão Koch Atacadista` (Bairro Cordeiros, Itajaí) — *Doca para Toco: fila intensa após 09:00 na Av. Reinaldo Schmithausen*.
-  3. `Pescados & Frigorífico Costa Sul` (Centro / Porto, Itajaí) — *Cadeia de frio obrigatória: veículo térmico refrigerado*.
-  4. `Angeloni Supermercados` (Quarta Avenida, Balneário Camboriú) — *Janela matutina para evitar congestionamento na BR-101*.
-  5. `Farmácia Preço Popular` (São Vicente, Itajaí) — *Medicamentos com entrega em nível de solo*.
-  6. `Armazém & Adega Brava Beach` (Praia Brava, Itajaí) — *Decreto municipal: proibido tráfego de caminhões pesados; carga de alto valor*.
-  7. `Fort Atacadista` (Ressacada, Itajaí) — *Carga seca consolidada*.
-  8. `Supermercado Koch` (Centro, Navegantes) — *Despacho regional*.
+### Linux / macOS / WSL
 
----
-
-## 🛠️ Como Executar
-
-### 1. Pré-requisitos
-* Python 3.10+
-* Docker & Docker Compose (opcional para subir o PostgreSQL local)
-
-### 2. Instalação
 ```bash
-git clone https://github.com/rodrigo85/logistics-agent-tower.git
-cd logistics-agent-tower
-
-# Instale as dependências
-pip install -e ".[dev,mcp]"
-pip install ortools sqlalchemy psycopg[binary]
+./scripts/setup.sh && ./scripts/run.sh
+# or, with make:
+make venv install seed run
 ```
 
-### 3. Banco de Dados (PostgreSQL via Docker ou SQLite automático)
-Se tiver o Docker rodando:
+### Docker
+
 ```bash
-docker compose up -d
-# O PostgreSQL estará em localhost:5432 e o Adminer em localhost:8080
+docker compose up -d --build          # API on :8000 backed by PostgreSQL 16
+docker compose --profile tools up -d  # + Adminer on :8080
 ```
-> **Nota**: Se o Docker não estiver ativo, o sistema utiliza automaticamente a base relacional SQLite local em `data/logistics.db`, sem necessidade de nenhuma configuração adicional e com 100% das tabelas e integridade preservadas.
 
-### 4. Executando o Painel Interativo no Terminal (CLI)
+Open **http://localhost:8000** (dashboard) and **http://localhost:8000/docs** (Swagger).
+
+### 60-second demo through the API
+
 ```bash
-python -m logistics_tower.cli
+# 1. Generate 40 fresh refrigerated orders for retailers in the region
+curl -X POST "http://localhost:8000/api/orders/generate?count=40"
+
+# 2. Plan the day; the run pauses at the HITL gate if risks are flagged
+curl -X POST http://localhost:8000/dispatch/plan -H "content-type: application/json" \
+     -d '{"cd_id":"CD-ITAJAI-SC01","auto_approve":false}'
+# -> {"thread_id":"dispatch-ab12cd34","status":"AWAITING_HUMAN_APPROVAL","approval_reason":"...","risk_warnings":[...]}
+
+# 3. Approve as the dispatcher
+curl -X POST http://localhost:8000/dispatch/resume -H "content-type: application/json" \
+     -d '{"thread_id":"dispatch-ab12cd34","verdict":"APPROVED","feedback":"OK with tracking"}'
+# -> {"status":"COMPLETED","manifest":{"manifest_id":"MAN-...","routes":[...]}}
 ```
-O painel Rich exibirá:
-1. Tabela de ocupação de peso e cubagem de cada caminhão;
-2. Sequência de paradas geradas pelo **Google OR-Tools** com previsão de chegada (ETA) e checagem de SLA;
-3. Alertas de conformidade;
-4. **Prompt Human-in-the-Loop**: Caso detecte inconsistências, pausa a tela e solicita aprovação do operador humano (`[A]provar` ou `[R]ejeitar`).
 
-### 5. Executando a API REST (FastAPI)
-```bash
-python -m logistics_tower.api.main
-```
-Acesse a documentação interativa Swagger em: **`http://localhost:8000/docs`**
+Optional: set `GOOGLE_MAPS_API_KEY` in `.env` to switch from haversine estimates to live-traffic routing.
 
-* `POST /dispatch/plan`: Inicia o planejamento de despacho na thread; pausa com status `AWAITING_HUMAN_APPROVAL` se houver exceções operacionais.
-* `POST /dispatch/resume`: Recebe a decisão e observação do despachante e finaliza a emissão do manifesto.
-* `GET /mcp/tools`: Lista ferramentas expostas via Model Context Protocol.
+## Business rules modelled
 
----
+* **Cold chain only:** five refrigerated trucks (2 VUC, 2 Toco, 1 Truck); every order is chilled (0-4 °C) or frozen (-18 °C).
+* **Food retail customers:** 56 supermarkets, wholesalers, grocery stores, mini-markets, bakeries, butchers, fishmongers, greengrocers and convenience stores in seven cities, each with its own receiving window and dock profile.
+* **One route per truck per day:** loading 05:00-06:00, departure 06:00, up to 12 stops, 20 minutes per stop, return to the CD. No second trip.
+* **Nearby stops travel together:** two-pass sweep clustering by bearing around the CD plus centroid refinement, then OR-Tools sequencing inside the route.
+* **Never overload:** weight and volume hard-capped at 100%; orders that do not fit stay pending and are reported.
+* **Driver shift:** mandatory 60-minute lunch after the first stop completed from 11:30, 11-hour limit (Lei 13.103/2015).
+* **Long-term memory:** customer rules (e.g. "narrow street, VUC only", "perishables before 09:00") live in SQL and shape allocation.
+* **Risk gate:** overloads, missed windows, shift overruns and unallocated orders require human approval; high-value cargo raises an informational alert.
 
-## 🧪 Testes Automatizados
+## API overview
 
-O projeto conta com suite de testes herméticos cobrindo todos os módulos:
-```bash
-pytest tests/
-```
-**Resultado**:
+| Method | Path | Purpose |
+|--------|------|---------|
+| `POST` | `/dispatch/plan` | Run the agents; returns `COMPLETED` or `AWAITING_HUMAN_APPROVAL` |
+| `POST` | `/dispatch/resume` | Resume a paused thread with `APPROVED` / `REJECTED` / `OVERRIDE` |
+| `GET` | `/dispatch/{thread_id}` | Current state of a planning thread |
+| `POST` | `/api/orders/generate?count=N` | Replace pending orders with N refrigerated orders (default 40, one per customer) |
+| `GET` | `/api/vehicle/{plate}/itinerary` | Step-by-step daily itinerary for a vehicle |
+| `GET` | `/api/dashboard-data` | Fleet, orders and latest routes for the map |
+| `GET` | `/api/traffic/status` · `/api/traffic/route` | Google Maps integration status and traffic-aware routes |
+| `GET` | `/mcp/tools` | Tools exposed to agents through MCP |
+| `GET` | `/health` | Liveness, version, environment |
+
+## Project layout
+
 ```text
-tests/test_api.py ............... [ 27%]
-tests/test_fleet_service.py ...... [ 36%]
-tests/test_hitl_graph.py ......... [ 54%]
-tests/test_mcp.py ................ [ 72%]
-tests/test_memory.py ............. [ 81%]
-tests/test_routing_service.py .... [100%]
-
-======================= 11 passed in 21s =======================
+.
+├── src/logistics_tower/
+│   ├── agents/          # supervisor, fleet, routing, risk (LangGraph nodes)
+│   ├── api/             # app factory, routers per context, schemas, dashboard template
+│   ├── db/              # SQLAlchemy models, repository, idempotent seeder, customer pool, order factory
+│   ├── mcp/             # MCP tools, in-process client, stdio server
+│   ├── memory/          # short-term checkpointer, long-term customer rules
+│   ├── services/        # sweep clustering, OR-Tools TSPTW routing, WMS, Google Maps traffic
+│   ├── graph.py         # DAG wiring + HITL gate
+│   ├── state.py         # typed graph state
+│   ├── config.py        # 12-factor settings
+│   └── cli.py           # Rich terminal dispatcher
+├── tests/               # pytest suite (unit + opt-in integration)
+├── docs/                # ARCHITECTURE.md, ADRs
+├── docker/              # multi-stage Dockerfile
+├── infra/terraform/gcp/ # Cloud Run, Cloud SQL, Artifact Registry, BigQuery, Secret Manager
+├── scripts/             # setup/run launchers (bash, PowerShell, bat), fixture export
+├── data/samples/        # reference fixtures
+├── .github/             # CI workflow, Dependabot, issue/PR templates
+├── Makefile · pyproject.toml · docker-compose.yml · .pre-commit-config.yaml
 ```
 
----
+## Quality gates
 
-## 📄 Licença
-Distribuído sob licença MIT. Desenvolvido por Rodrigo Andreatta da Costa.
+```bash
+make lint        # ruff check
+make typecheck   # mypy
+make test        # pytest (network-free)
+make test-all    # + Google Maps integration tests (needs GOOGLE_MAPS_API_KEY)
+make cov         # coverage report (threshold 70%)
+make check       # everything CI runs
+```
+
+CI runs on every push and pull request: lint + mypy, the test matrix
+(Ubuntu and Windows × Python 3.10 and 3.12), a Docker image build and
+`terraform validate`.
+
+## Configuration
+
+Copy `.env.example` to `.env`. The most relevant settings:
+
+| Variable | Default | Effect |
+|----------|---------|--------|
+| `DATABASE_URL` | *(empty → SQLite)* | Any SQLAlchemy URL, e.g. `postgresql+psycopg://…` |
+| `GOOGLE_MAPS_API_KEY` | *(empty)* | Enables Routes API v2 live traffic |
+| `HITL_AUTO_APPROVE` | `false` | Skip the human gate (pipelines, demos) |
+| `MAX_STOPS_PER_VEHICLE` | `12` | Deliveries per route |
+| `DOCK_START_TIME` | `05:00` | Loading start; departure one hour later |
+| `MAX_WEIGHT_THRESHOLD_PERCENT` | `100.0` | Utilisation above which the risk agent flags an overload |
+| `LOG_LEVEL` | `INFO` | Root logging level |
+
+## Deployment
+
+* **Docker Compose:** `docker compose up -d --build` starts PostgreSQL and the API (non-root image, health check).
+* **Google Cloud:** `cd infra/terraform/gcp && terraform init && terraform apply` provisions Artifact Registry,
+  Cloud SQL (PostgreSQL 16), Secret Manager (database URL), BigQuery telemetry dataset and a Cloud Run service
+  (2 vCPU / 4 GiB). Push the image to the registry and Cloud Run picks it up.
+
+## Roadmap
+
+- [ ] LLM-backed explanation node (Gemini / OpenAI / Ollama via `LLM_PROVIDER`) that narrates risks to the dispatcher
+- [ ] Multi-vehicle CVRP in OR-Tools (global rebalancing across trucks) and lunch modelled as a solver break
+- [ ] `PostgresSaver` checkpointer for multi-instance deployments
+- [ ] Alembic migrations
+- [ ] Route telemetry export to BigQuery
+- [ ] Authentication (OIDC) in front of the API
+
+## Documentation
+
+* [Architecture](docs/ARCHITECTURE.md) · [ADRs](docs/adr/README.md) · [Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md) · [Security](SECURITY.md)
+
+## License
+
+MIT © [Rodrigo Andreatta da Costa](https://github.com/rodrigo85)

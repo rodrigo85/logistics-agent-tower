@@ -1,11 +1,11 @@
 """
-Database session and connection management for Logistics Control Tower.
-Supports PostgreSQL (Docker / Cloud) and SQLite with automatic schema migration.
+Database engine and session management.
+
+Supports PostgreSQL (Docker / Cloud SQL) and SQLite (local development and tests).
+The URL is resolved by `Settings.resolved_database_url`.
 """
 
-import os
-from pathlib import Path
-from typing import Generator
+from collections.abc import Generator
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
@@ -13,30 +13,29 @@ from sqlalchemy.orm import Session, sessionmaker
 from logistics_tower.config import settings
 from logistics_tower.db.models import Base
 
-# Database URL resolution:
-# If DATABASE_URL is set (e.g. postgresql+psycopg://postgres:postgres@localhost:5432/logistics), use it.
-# Otherwise, default to SQLite file inside project directory.
-_DEFAULT_DB_FILE = settings.project_root / "data" / "logistics.db"
-_DEFAULT_DB_FILE.parent.mkdir(parents=True, exist_ok=True)
+DATABASE_URL = settings.resolved_database_url
+_IS_SQLITE = DATABASE_URL.startswith("sqlite")
 
-DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{_DEFAULT_DB_FILE}")
+if _IS_SQLITE:
+    settings.sqlite_path.parent.mkdir(parents=True, exist_ok=True)
 
 engine = create_engine(
     DATABASE_URL,
     echo=False,
-    connect_args={"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {},
+    pool_pre_ping=not _IS_SQLITE,
+    connect_args={"check_same_thread": False} if _IS_SQLITE else {},
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
-def init_db():
-    """Creates all database tables defined in models."""
+def init_db() -> None:
+    """Create all tables defined in `models` (idempotent)."""
     Base.metadata.create_all(bind=engine)
 
 
 def get_db() -> Generator[Session, None, None]:
-    """FastAPI and service dependency to yield a database session."""
+    """FastAPI / service dependency yielding a scoped session."""
     db = SessionLocal()
     try:
         yield db

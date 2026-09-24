@@ -4,23 +4,20 @@ Interface for reading pending orders from the relational database (PostgreSQL / 
 """
 
 import logging
-from typing import Any, Dict, List
+from typing import Any
 
 from logistics_tower.db.repository import get_repository
-from logistics_tower.db.seed import seed_database
 
 logger = logging.getLogger(__name__)
 
 
 class WMSService:
-    """Interacts with relational database storing real customer orders."""
+    """Reads customer orders from the relational database (seeded by the application entry point)."""
 
     def __init__(self):
-        # Ensure database is initialized and seeded
-        seed_database()
         self.repo = get_repository()
 
-    def get_pending_orders(self, cd_id: str) -> List[Dict[str, Any]]:
+    def get_pending_orders(self, cd_id: str) -> list[dict[str, Any]]:
         """Queries pending delivery orders directly from the database."""
         orders = self.repo.get_pending_orders(cd_id)
         logger.info(f"WMS: Retrieved {len(orders)} pending orders from SQL database for {cd_id}")

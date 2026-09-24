@@ -4,11 +4,12 @@ Central coordinator of the Logistics Control Tower, routing operational tasks,
 incorporating long-term customer memory, and issuing final dispatch manifests in the SQL database.
 """
 
-from datetime import datetime
 import logging
-from typing import Any, Dict
 import uuid
+from datetime import datetime
+from typing import Any
 
+from logistics_tower.config import settings
 from logistics_tower.db.repository import get_repository
 from logistics_tower.mcp.client import get_mcp_client
 from logistics_tower.memory.long_term import get_customer_memory_store
@@ -17,12 +18,12 @@ from logistics_tower.state import DispatchManifest, LogisticsAgentState
 logger = logging.getLogger(__name__)
 
 
-def supervisor_init_node(state: LogisticsAgentState) -> Dict[str, Any]:
+def supervisor_init_node(state: LogisticsAgentState) -> dict[str, Any]:
     """
     Supervisor Initialization:
     Loads long-term customer dock rules from relational database and prepares operational environment.
     """
-    cd_id = state.get("cd_id", "CD-ITAJAI-SC01")
+    cd_id = state.get("cd_id", settings.default_cd_id)
     logger.info(f"Supervisor: Initializing dispatch planning for {cd_id}")
 
     memory_store = get_customer_memory_store()
@@ -38,18 +39,18 @@ def supervisor_init_node(state: LogisticsAgentState) -> Dict[str, Any]:
     }
 
 
-def supervisor_finalize_node(state: LogisticsAgentState) -> Dict[str, Any]:
+def supervisor_finalize_node(state: LogisticsAgentState) -> dict[str, Any]:
     """
     Supervisor Finalization:
     Compiles final Dispatch Manifest, confirms via MCP tool, and persists to SQL database.
     """
-    cd_id = state.get("cd_id", "CD-ITAJAI-SC01")
+    cd_id = state.get("cd_id", settings.default_cd_id)
     routes = state.get("routes", [])
     loads = state.get("load_allocation", [])
 
-    total_orders = sum(len(l.get("orders", [])) for l in loads)
-    total_w = sum(l.get("total_weight_kg", 0.0) for l in loads)
-    total_v = sum(l.get("total_volume_m3", 0.0) for l in loads)
+    total_orders = sum(len(load.get("orders", [])) for load in loads)
+    total_w = sum(load.get("total_weight_kg", 0.0) for load in loads)
+    total_v = sum(load.get("total_volume_m3", 0.0) for load in loads)
 
     manifest_id = f"MAN-{datetime.now().strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:6]}"
 
@@ -86,10 +87,12 @@ def supervisor_finalize_node(state: LogisticsAgentState) -> Dict[str, Any]:
         manifest_dict=manifest,
     )
 
-    log_msg = f"Supervisor: Dispatch manifest {manifest_id} generated and persisted to database. Status: {manifest_status}"
+    log_msg = (
+        f"Supervisor: Dispatch manifest {manifest_id} generated and persisted to database. Status: {manifest_status}"
+    )
     logger.info(log_msg)
 
     return {
         "dispatch_manifest": manifest,
-        "execution_log": state.get("execution_log", []) + [log_msg],
+        "execution_log": [*state.get("execution_log", []), log_msg],
     }

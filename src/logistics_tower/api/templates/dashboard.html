@@ -1,29 +1,47 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Torre de Controle Logístico - CD Itajaí (SC)</title>
-  
+
   <!-- Tailwind CSS & Lucide Icons CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/lucide@latest"></script>
-  
+
   <!-- Leaflet CSS & JS for Interactive Map (Free / OpenStreetMap) -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
   <style>
-    #map { height: 500px; width: 100%; border-radius: 0.75rem; z-index: 10; }
-    .custom-scrollbar::-webkit-scrollbar { width: 6px; }
-    .custom-scrollbar::-webkit-scrollbar-track { background: #1e293b; }
-    .custom-scrollbar::-webkit-scrollbar-thumb { background: #475569; border-radius: 3px; }
+    #map {
+      height: 500px;
+      width: 100%;
+      border-radius: 0.75rem;
+      z-index: 10;
+    }
+
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    .custom-scrollbar::-webkit-scrollbar-track {
+      background: #1e293b;
+    }
+
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: #475569;
+      border-radius: 3px;
+    }
   </style>
 </head>
+
 <body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col font-sans">
 
   <!-- Header -->
-  <header class="bg-slate-900 border-b border-slate-800 px-6 py-4 flex flex-wrap justify-between items-center shadow-lg">
+  <header
+    class="bg-slate-900 border-b border-slate-800 px-6 py-4 flex flex-wrap justify-between items-center shadow-lg">
     <div class="flex items-center space-x-3">
       <div class="bg-blue-600 p-2.5 rounded-xl shadow-blue-500/20 shadow-lg text-white">
         <i data-lucide="truck" class="w-6 h-6"></i>
@@ -31,28 +49,38 @@
       <div>
         <div class="flex items-center space-x-2">
           <h1 class="text-xl font-bold tracking-tight text-white">Torre de Controle Logístico & Roteirização</h1>
-          <span class="bg-blue-500/10 text-blue-400 text-xs px-2.5 py-0.5 rounded-full font-medium border border-blue-500/20">LangGraph Multi-Agent</span>
-          <span class="bg-emerald-500/10 text-emerald-400 text-xs px-2.5 py-0.5 rounded-full font-medium border border-emerald-500/20">Google OR-Tools</span>
-          <span class="bg-purple-500/10 text-purple-400 text-xs px-2.5 py-0.5 rounded-full font-medium border border-purple-500/20">MCP 2.x</span>
+          <span
+            class="bg-blue-500/10 text-blue-400 text-xs px-2.5 py-0.5 rounded-full font-medium border border-blue-500/20">LangGraph
+            Multi-Agent</span>
+          <span
+            class="bg-emerald-500/10 text-emerald-400 text-xs px-2.5 py-0.5 rounded-full font-medium border border-emerald-500/20">Google
+            OR-Tools</span>
+          <span
+            class="bg-purple-500/10 text-purple-400 text-xs px-2.5 py-0.5 rounded-full font-medium border border-purple-500/20">MCP
+            2.x</span>
         </div>
         <p class="text-xs text-slate-400 mt-0.5 flex items-center">
           <i data-lucide="map-pin" class="w-3.5 h-3.5 mr-1 text-red-400"></i>
-          CD Itajaí: <span class="text-slate-300 font-medium ml-1">Rod. Antônio Heil, 1001 - KM 1 - Itaipava, Itajaí - SC (CEP 88316-001)</span>
+          CD Itajaí: <span class="text-slate-300 font-medium ml-1">Rod. Antônio Heil (ao lado da Rua Anair de Souza),
+            Itajaí - SC</span>
         </p>
       </div>
     </div>
 
     <!-- Actions & Links -->
     <div class="flex items-center space-x-3 mt-3 sm:mt-0">
-      <a href="/docs" target="_blank" class="px-3 py-1.5 text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg border border-slate-700 transition flex items-center shadow-sm">
+      <a href="/docs" target="_blank"
+        class="px-3 py-1.5 text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg border border-slate-700 transition flex items-center shadow-sm">
         <i data-lucide="code" class="w-4 h-4 mr-1.5 text-blue-400"></i>
         Swagger Docs
       </a>
-      <button onclick="generateRandomOrders()" id="btnGenerate" class="px-4 py-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg shadow-lg shadow-indigo-600/30 transition flex items-center">
+      <button onclick="generateRandomOrders()" id="btnGenerate"
+        class="px-4 py-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg shadow-lg shadow-indigo-600/30 transition flex items-center">
         <i data-lucide="shuffle" class="w-4 h-4 mr-1.5"></i>
-        Gerar Novos Pedidos & Endereços
+        Gerar Pedidos do Dia (40 clientes)
       </button>
-      <button onclick="triggerDispatchPlan()" id="btnPlan" class="px-4 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white rounded-lg shadow-lg shadow-blue-600/30 transition flex items-center">
+      <button onclick="triggerDispatchPlan()" id="btnPlan"
+        class="px-4 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white rounded-lg shadow-lg shadow-blue-600/30 transition flex items-center">
         <i data-lucide="play" class="w-4 h-4 mr-1.5"></i>
         Calcular Rotas (Multi-Agente)
       </button>
@@ -61,41 +89,102 @@
 
   <!-- Main Container -->
   <main class="flex-1 p-6 grid grid-cols-1 lg:grid-cols-3 gap-6 max-w-[1600px] w-full mx-auto">
-    
+
     <!-- Coluna Esquerda & Centro: Mapa e Rotas (2 Cols) -->
     <div class="lg:col-span-2 space-y-6">
-      
+
       <!-- Interactive Map Card -->
-      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl">
+      <div id="mapCard" class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl relative">
         <div class="flex justify-between items-center mb-3">
           <div class="flex items-center space-x-2">
             <i data-lucide="navigation" class="w-5 h-5 text-blue-400"></i>
-            <h2 class="font-bold text-white text-base">Mapa Operacional Georreferenciado (Itajaí, BC e Navegantes)</h2>
+            <h2 class="font-bold text-white text-base">Mapa Operacional (Itajaí, BC, Camboriú, Navegantes, Penha e Brusque)</h2>
           </div>
-          <div class="flex items-center space-x-4 text-xs">
-            <span class="flex items-center"><span class="w-3 h-3 rounded-full bg-blue-500 mr-1.5"></span> VUC Seco</span>
-            <span class="flex items-center"><span class="w-3 h-3 rounded-full bg-cyan-400 mr-1.5"></span> VUC Refrigerado</span>
-            <span class="flex items-center"><span class="w-3 h-3 rounded-full bg-amber-500 mr-1.5"></span> Caminhão Toco</span>
+          <div class="flex items-center space-x-3">
+            <span id="googleTrafficBadge" class="hidden bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[11px] px-2.5 py-0.5 rounded-full font-medium flex items-center shadow-sm">
+              <span class="w-2 h-2 rounded-full bg-emerald-400 mr-1.5 animate-pulse"></span>
+              Google Maps Tráfego: Ao Vivo
+            </span>
+            <div class="flex items-center space-x-4 text-xs font-mono">
+              <span class="flex items-center"><span class="w-3 h-3 rounded-full bg-blue-500 mr-1.5"></span>
+                RLS-7B14</span>
+              <span class="flex items-center"><span class="w-3 h-3 rounded-full bg-emerald-500 mr-1.5"></span>
+                MKB-2D55</span>
+              <span class="flex items-center"><span class="w-3 h-3 rounded-full bg-amber-500 mr-1.5"></span>
+                QJQ-4E88</span>
+              <span class="flex items-center"><span class="w-3 h-3 rounded-full bg-purple-500 mr-1.5"></span>
+                QHP-1G44</span>
+              <span class="flex items-center"><span class="w-3 h-3 rounded-full bg-pink-500 mr-1.5"></span>
+                MMI-8H12</span>
+            </div>
           </div>
         </div>
-        <div id="map"></div>
+
+        <div class="relative">
+          <div id="map"></div>
+
+          <!-- Banner Flutuante de Rota Destacada -->
+          <div id="mapHighlightBanner"
+            class="hidden absolute top-3 left-3 right-3 sm:left-auto sm:right-3 z-30 bg-slate-900/95 border border-blue-500/60 shadow-2xl rounded-xl p-3 backdrop-blur-md transition-all duration-300">
+            <div class="flex items-center justify-between space-x-3">
+              <div class="flex items-center space-x-2.5">
+                <span class="relative flex h-3 w-3">
+                  <span id="bannerPulsePing"
+                    class="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                  <span id="bannerPulseDot" class="relative inline-flex rounded-full h-3 w-3 bg-blue-500"></span>
+                </span>
+                <div>
+                  <div class="flex items-center space-x-2">
+                    <span class="text-[10px] uppercase font-bold text-blue-400 tracking-wider">Rota Destacada</span>
+                    <span id="bannerPlateBadge"
+                      class="bg-white text-slate-900 font-mono font-black text-xs px-2 py-0.5 rounded border border-slate-700 shadow-sm">RLS7B14</span>
+                  </div>
+                  <div id="bannerVehicleInfo" class="text-xs text-slate-200 font-medium mt-0.5">
+                    Baú Frigorífico - Motorista
+                  </div>
+                </div>
+              </div>
+              <div class="flex items-center space-x-2">
+                <button onclick="openItineraryModal(currentHighlightedVehicleId)"
+                  class="px-2.5 py-1.5 bg-blue-600/20 hover:bg-blue-600 text-blue-300 hover:text-white rounded-lg text-xs font-semibold border border-blue-500/30 transition flex items-center shadow-sm">
+                  <i data-lucide="calendar" class="w-3.5 h-3.5 mr-1"></i> Itinerário
+                </button>
+                <button onclick="resetMapHighlight()"
+                  class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white rounded-lg text-xs font-semibold border border-slate-700 transition flex items-center shadow-sm"
+                  title="Mostrar todas as rotas no mapa">
+                  <i data-lucide="eye" class="w-3.5 h-3.5 mr-1"></i> Ver Todas
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Toast Flutuante de Notificação no Mapa -->
+          <div id="mapToast"
+            class="hidden absolute bottom-4 left-1/2 -translate-x-1/2 z-30 bg-blue-600 text-white shadow-2xl rounded-xl px-4 py-2.5 text-xs font-semibold flex items-center space-x-2 transition-all duration-300">
+            <i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i>
+            <span id="mapToastText">Calculando rotas e preparando mapa...</span>
+          </div>
+        </div>
       </div>
+
 
       <!-- Tabela de Pedidos Pendentes no WMS -->
       <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl">
         <div class="flex items-center justify-between mb-3">
           <div class="flex items-center space-x-2">
             <i data-lucide="package-search" class="w-5 h-5 text-indigo-400"></i>
-            <h2 class="font-bold text-white text-base">Pedidos Pendentes de Despacho (WMS CD Itajaí)</h2>
+            <h2 class="font-bold text-white text-base">Pedidos Refrigerados Pendentes (WMS CD Itajaí)</h2>
           </div>
-          <span id="ordersCountBadge" class="text-xs text-indigo-300 bg-indigo-500/10 border border-indigo-500/20 px-3 py-1 rounded-full font-semibold">
+          <span id="ordersCountBadge"
+            class="text-xs text-indigo-300 bg-indigo-500/10 border border-indigo-500/20 px-3 py-1 rounded-full font-semibold">
             Carregando pedidos...
           </span>
         </div>
 
         <div class="overflow-x-auto max-h-56 custom-scrollbar border border-slate-800/80 rounded-xl">
           <table class="w-full text-left text-xs text-slate-300">
-            <thead class="bg-slate-950 text-slate-400 uppercase tracking-wider border-b border-slate-800 font-semibold sticky top-0">
+            <thead
+              class="bg-slate-950 text-slate-400 uppercase tracking-wider border-b border-slate-800 font-semibold sticky top-0">
               <tr>
                 <th class="py-2.5 px-3">Pedido</th>
                 <th class="py-2.5 px-3">Cliente / Destino</th>
@@ -122,9 +211,11 @@
             <i data-lucide="list-ordered" class="w-5 h-5 text-emerald-400"></i>
             <h2 class="font-bold text-white text-base">Sequenciamento Ótimo de Entregas (Google OR-Tools VRP)</h2>
           </div>
-          <span id="routeSummaryBadge" class="text-xs text-slate-400 bg-slate-800 px-3 py-1 rounded-full border border-slate-700">Aguardando cálculo</span>
+          <span id="routeSummaryBadge"
+            class="text-xs text-slate-400 bg-slate-800 px-3 py-1 rounded-full border border-slate-700">Aguardando
+            cálculo</span>
         </div>
-        
+
         <div class="overflow-x-auto">
           <table class="w-full text-left text-xs text-slate-300">
             <thead class="bg-slate-950 text-slate-400 uppercase tracking-wider border-b border-slate-800 font-semibold">
@@ -154,7 +245,8 @@
     <div class="space-y-6">
 
       <!-- Human-in-the-Loop Alert & Action Box -->
-      <div id="hitlCard" class="hidden bg-amber-950/40 border border-amber-500/40 rounded-2xl p-5 shadow-xl shadow-amber-950/20">
+      <div id="hitlCard"
+        class="hidden bg-amber-950/40 border border-amber-500/40 rounded-2xl p-5 shadow-xl shadow-amber-950/20">
         <div class="flex items-start space-x-3">
           <div class="bg-amber-500/20 p-2 rounded-xl text-amber-400">
             <i data-lucide="shield-alert" class="w-6 h-6"></i>
@@ -162,7 +254,9 @@
           <div class="flex-1">
             <h3 class="font-bold text-amber-300 text-sm flex items-center justify-between">
               Gate Human-in-the-Loop Acionado!
-              <span class="text-[10px] bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded border border-amber-500/30 uppercase">Requer Despachante</span>
+              <span
+                class="text-[10px] bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded border border-amber-500/30 uppercase">Requer
+                Despachante</span>
             </h3>
             <p id="hitlReason" class="text-xs text-amber-200/90 mt-1 leading-relaxed">
               Exceções operacionais detectadas pelo Risk Agent.
@@ -171,11 +265,13 @@
         </div>
 
         <div class="mt-4 pt-4 border-t border-amber-500/20 flex space-x-2">
-          <button onclick="respondHITL('APPROVED')" class="flex-1 py-2 px-3 text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg transition shadow-md flex items-center justify-center">
+          <button onclick="respondHITL('APPROVED')"
+            class="flex-1 py-2 px-3 text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg transition shadow-md flex items-center justify-center">
             <i data-lucide="check-circle" class="w-4 h-4 mr-1.5"></i>
             Aprovar Despacho
           </button>
-          <button onclick="respondHITL('REJECTED')" class="flex-1 py-2 px-3 text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white rounded-lg transition shadow-md flex items-center justify-center">
+          <button onclick="respondHITL('REJECTED')"
+            class="flex-1 py-2 px-3 text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white rounded-lg transition shadow-md flex items-center justify-center">
             <i data-lucide="x-circle" class="w-4 h-4 mr-1.5"></i>
             Rejeitar / Ajustar
           </button>
@@ -213,7 +309,8 @@
           <i data-lucide="terminal" class="w-5 h-5 text-purple-400"></i>
           <h2 class="font-bold text-white text-base">Log dos Agentes em Tempo Real</h2>
         </div>
-        <div id="agentLogs" class="bg-slate-950 p-3.5 rounded-xl text-[11px] font-mono text-slate-400 h-48 overflow-y-auto custom-scrollbar space-y-1 border border-slate-800/80">
+        <div id="agentLogs"
+          class="bg-slate-950 p-3.5 rounded-xl text-[11px] font-mono text-slate-400 h-48 overflow-y-auto custom-scrollbar space-y-1 border border-slate-800/80">
           <p class="text-slate-600">> Sistema inicializado. Pronto para despachar.</p>
         </div>
       </div>
@@ -222,19 +319,141 @@
 
   </main>
 
+  <!-- Modal Itinerário do Dia (Placas e Trajeto Completo) -->
+  <div id="itineraryModal"
+    class="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-sm hidden flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+    <div
+      class="relative bg-slate-900 border border-slate-700/80 rounded-2xl w-full max-w-4xl max-h-[92vh] shadow-2xl flex flex-col overflow-hidden text-slate-100">
+
+      <!-- Modal Header -->
+      <div class="px-5 py-4 bg-slate-950 border-b border-slate-800 flex justify-between items-center">
+        <div class="flex items-center space-x-4">
+          <!-- Mercosul License Plate Badge -->
+          <div id="modalPlateBadge"
+            class="bg-white border-2 border-slate-700 rounded-md shadow-lg overflow-hidden flex flex-col items-center select-none">
+            <div
+              class="bg-blue-700 text-white text-[9px] font-bold px-3 py-0.5 uppercase tracking-widest flex items-center w-full justify-between">
+              <span>🇧🇷</span>
+              <span class="mx-1">BRASIL</span>
+              <span class="text-[7px] text-blue-200">MERCOSUL</span>
+            </div>
+            <div id="modalPlateText" class="px-3 py-1 font-mono font-black text-xl tracking-wider text-slate-950">
+              RLS7B14
+            </div>
+          </div>
+          <div>
+            <div class="flex items-center space-x-2">
+              <h2 id="modalVehicleModel" class="text-base font-bold text-white">Baú Frigorífico</h2>
+              <span id="modalCargoBadge"
+                class="text-[10px] font-semibold px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700">📦
+                Carga Seca</span>
+            </div>
+            <p class="text-xs text-slate-400 mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+              <span><i data-lucide="user" class="w-3.5 h-3.5 inline mr-1 text-blue-400"></i> Motorista: <strong
+                  id="modalDriverName" class="text-slate-200">Carlos Eduardo da Silva</strong></span>
+              <span><i data-lucide="phone" class="w-3.5 h-3.5 inline mr-1 text-emerald-400"></i> <span
+                  id="modalDriverPhone" class="text-slate-300">(47) 99123-4567</span></span>
+            </p>
+          </div>
+        </div>
+
+        <div class="flex items-center space-x-2">
+          <span
+            class="hidden md:inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+            <i data-lucide="shield-check" class="w-3.5 h-3.5 mr-1 text-emerald-400"></i>
+            Lei 13.103/2015 Conforme
+          </span>
+          <button onclick="closeItineraryModal()"
+            class="text-slate-400 hover:text-white p-2 rounded-lg hover:bg-slate-800 transition">
+            <i data-lucide="x" class="w-5 h-5"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Resumo KPIs do Dia -->
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-3 p-4 bg-slate-950/60 border-b border-slate-800 text-xs">
+        <div class="bg-slate-900/80 p-3 rounded-xl border border-slate-800">
+          <div class="text-[11px] text-slate-400 font-medium">📦 Ocupação da Rota</div>
+          <div id="modalKpiCapacity" class="text-xs font-bold text-white mt-1">-</div>
+          <div class="text-[10px] text-emerald-400 mt-0.5 font-medium">✓ Capacidade 100% respeitada</div>
+        </div>
+        <div class="bg-slate-900/80 p-3 rounded-xl border border-slate-800">
+          <div class="text-[11px] text-slate-400 font-medium">🛣️ Km Total do Dia</div>
+          <div id="modalKpiDistance" class="text-sm font-bold text-blue-400 mt-1">-</div>
+          <div class="text-[10px] text-slate-400 mt-0.5">Ida e retorno ao CD Itajaí</div>
+        </div>
+        <div class="bg-slate-900/80 p-3 rounded-xl border border-slate-800">
+          <div class="text-[11px] text-slate-400 font-medium">⏱️ Horário da Jornada</div>
+          <div id="modalKpiShift" class="text-sm font-bold text-indigo-300 mt-1">05:00 ➔ -</div>
+          <div id="modalKpiShiftSub" class="text-[10px] text-emerald-400 mt-0.5">Dentro do limite legal (11h)</div>
+        </div>
+        <div class="bg-slate-900/80 p-3 rounded-xl border border-slate-800">
+          <div class="text-[11px] text-slate-400 font-medium">🍽️ Intervalo de Almoço</div>
+          <div id="modalKpiLunch" class="text-sm font-bold text-amber-400 mt-1">1h00 Obrigatório</div>
+          <div id="modalKpiLunchSub" class="text-[10px] text-slate-400 mt-0.5">Após a primeira entrega concluída depois das 11:30</div>
+        </div>
+      </div>
+
+      <!-- Timeline do Itinerário (Scrollable) -->
+      <div class="p-5 sm:p-6 overflow-y-auto max-h-[54vh] custom-scrollbar space-y-5">
+        <div class="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-800">
+          <div>
+            <h3 class="text-sm font-bold text-white flex items-center">
+              <i data-lucide="route" class="w-4 h-4 mr-1.5 text-blue-400"></i>
+              Roteiro do Dia (rota única, múltiplas paradas)
+            </h3>
+            <p class="text-[11px] text-slate-400 mt-0.5">
+              Carregamento às 05:00, saída às 06:00, entregas sequenciadas pelo OR-Tools (paradas próximas agrupadas), almoço obrigatório e retorno ao CD.
+            </p>
+          </div>
+
+          <!-- Route summary chips -->
+          <div id="modalRouteSummary" class="flex flex-wrap items-center gap-2 text-[11px] font-semibold"></div>
+        </div>
+
+        <!-- Timeline container -->
+        <div id="modalTimelineList" class="space-y-6 text-xs">
+          <!-- Dynamically populated with the single daily route timeline -->
+        </div>
+      </div>
+
+      <!-- Modal Footer -->
+      <div class="px-6 py-3.5 bg-slate-950 border-t border-slate-800 flex justify-between items-center text-xs">
+        <span class="text-slate-400 flex items-center">
+          <i data-lucide="info" class="w-4 h-4 mr-1.5 text-blue-400"></i>
+          Pressione <kbd
+            class="px-1.5 py-0.5 bg-slate-800 border border-slate-700 rounded text-slate-300 font-mono text-[10px] mx-1">ESC</kbd>
+          para fechar
+        </span>
+        <div class="flex space-x-2">
+          <button id="btnFocusMap" onclick="focusVehicleOnMap()"
+            class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg transition shadow-md flex items-center">
+            <i data-lucide="map" class="w-4 h-4 mr-1.5"></i>
+            Destacar Rota no Mapa
+          </button>
+          <button onclick="closeItineraryModal()"
+            class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold rounded-lg border border-slate-700 transition">
+            Fechar
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
   <script>
     // Lucide Icons
     lucide.createIcons();
 
-    // Map Initialization (Centered in Itajaí, SC)
-    const map = L.map('map').setView([-26.9200, -48.6650], 12);
+    // Map Initialization (Encompassing Itajaí, BR-101 and Brusque via SC-486)
+    const map = L.map('map').setView([-27.0100, -48.7800], 11);
 
     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
     }).addTo(map);
 
-    // CD Depot Pin (Itaipava)
+    // CD Depot Pin (Rod. Antônio Heil ao lado da Rua Anair de Souza)
     const depotIcon = L.divIcon({
       className: 'bg-red-600 text-white rounded-full p-2 border-2 border-white shadow-xl flex items-center justify-center font-bold text-xs',
       html: '🏢',
@@ -242,13 +461,19 @@
       iconAnchor: [16, 16]
     });
 
-    const depotMarker = L.marker([-26.9315, -48.7010], { icon: depotIcon }).addTo(map)
-      .bindPopup("<b>Centro de Distribuição Itajaí</b><br>Rod. Antônio Heil KM 1 - Itaipava");
+    const depotMarker = L.marker([-26.9418, -48.7094], { icon: depotIcon }).addTo(map)
+      .bindPopup("<b>Centro de Distribuição Itajaí</b><br>Rod. Antônio Heil (ao lado da Rua Anair de Souza)");
 
     let routeLayers = [];
+    let vehicleMapData = {};
+    let currentHighlightedVehicleId = null;
+    let currentModalIdentifier = null;
     let currentThreadId = null;
     let currentFleet = [];
     let currentOrders = [];
+    let currentLoads = [];
+    let currentRoutes = [];
+    let selectedVehicleForMap = null;
     let pendingMarkers = [];
 
     // Load Initial Data
@@ -256,11 +481,25 @@
       try {
         const res = await fetch('/api/dashboard-data');
         const data = await res.json();
-        currentFleet = data.fleet;
-        currentOrders = data.orders;
-        renderFleetCards(data.fleet);
-        renderOrdersTable(data.orders);
-        renderPendingOrderPins(data.orders);
+        currentFleet = data.fleet || [];
+        currentOrders = data.orders || [];
+        currentRoutes = data.routes || [];
+        currentLoads = data.load_allocation || [];
+
+        if (data.google_traffic_active) {
+          const badge = document.getElementById('googleTrafficBadge');
+          if (badge) badge.classList.remove('hidden');
+        }
+
+        renderFleetCards(currentFleet, currentLoads);
+        renderOrdersTable(currentOrders);
+
+        if (currentRoutes && currentRoutes.length > 0) {
+          await renderRoutesOnMap(currentRoutes);
+          renderStopsTable(currentRoutes);
+        } else {
+          renderPendingOrderPins(currentOrders);
+        }
       } catch (err) {
         console.error(err);
       }
@@ -276,7 +515,7 @@
         tbody.innerHTML = `
           <tr>
             <td colspan="7" class="text-center py-6 text-slate-500">
-              Nenhum pedido pendente no momento. Clique em "Gerar Novos Pedidos & Endereços".
+              Nenhum pedido pendente no momento. Clique em "Gerar Pedidos do Dia (40 clientes)".
             </td>
           </tr>
         `;
@@ -365,6 +604,10 @@
         // Clear previous routes, pins and manifest card
         routeLayers.forEach(l => map.removeLayer(l));
         routeLayers = [];
+        vehicleMapData = {};
+        currentRoutes = [];
+        currentLoads = [];
+        hideHighlightBanner();
         pendingMarkers.forEach(m => map.removeLayer(m));
         pendingMarkers = [];
         document.getElementById('hitlCard').classList.add('hidden');
@@ -378,7 +621,7 @@
           </tr>
         `;
 
-        const res = await fetch('/api/orders/generate', { method: 'POST' });
+        const res = await fetch('/api/orders/generate?count=40', { method: 'POST' });
         const data = await res.json();
         currentOrders = data.orders;
 
@@ -395,56 +638,116 @@
         logBox.innerHTML += `<p class="text-rose-400">> Erro ao gerar pedidos: ${err.message}</p>`;
       } finally {
         btn.disabled = false;
-        btn.innerHTML = `<i data-lucide="shuffle" class="w-4 h-4 mr-1.5"></i> Gerar Novos Pedidos & Endereços`;
+        btn.innerHTML = `<i data-lucide="shuffle" class="w-4 h-4 mr-1.5"></i> Gerar Pedidos do Dia (40 clientes)`;
         lucide.createIcons();
       }
     }
 
     function renderFleetCards(fleet, loads = []) {
+      currentFleet = fleet;
+      currentLoads = loads;
       const container = document.getElementById('fleetContainer');
       container.innerHTML = '';
 
       fleet.forEach(v => {
-        const load = loads.find(l => l.vehicle_id === v.vehicle_id);
-        const wPct = load ? load.weight_utilization_pct : 0;
-        const vPct = load ? load.volume_utilization_pct : 0;
-        const orderCount = load ? load.orders.length : 0;
-
-        const wColor = wPct > 90 ? 'bg-rose-500' : (wPct > 80 ? 'bg-amber-500' : 'bg-blue-500');
-        const vColor = vPct > 90 ? 'bg-rose-500' : (vPct > 80 ? 'bg-amber-500' : 'bg-emerald-500');
+        const load = loads.find(l => l.vehicle_id === v.vehicle_id || (l.plate && l.plate === v.plate));
+        let loadHtml = '';
+        if (load && load.orders && load.orders.length > 0) {
+          const wPct = Math.min(load.weight_utilization_pct || 0, 100);
+          const vPct = Math.min(load.volume_utilization_pct || 0, 100);
+          const wColor = wPct >= 95 ? 'bg-amber-500' : 'bg-blue-500';
+          const vColor = vPct >= 95 ? 'bg-amber-500' : 'bg-emerald-500';
+          const cities = (load.cities || []).join(', ');
+          const preview = load.orders.slice(0, 3).map(o => o.customer_name).join(' · ');
+          const more = load.orders.length > 3 ? ` +${load.orders.length - 3}` : '';
+          loadHtml = `
+            <div class="mt-2 pt-2 border-t border-slate-800/80">
+              <div class="flex justify-between items-center text-[10px] mb-1">
+                <span class="font-bold text-slate-200 flex items-center">
+                  <span class="w-2 h-2 rounded-full bg-blue-400 mr-1.5"></span>
+                  Rota do dia · ${load.orders.length} paradas
+                </span>
+                <span class="text-[10px] text-slate-400 font-mono truncate max-w-[140px] text-right" title="${cities}">${cities}</span>
+              </div>
+              <div class="text-[10px] text-slate-400 truncate mb-1" title="${load.orders.map(o => o.customer_name).join(', ')}">${preview}${more}</div>
+              <div class="space-y-1 text-[10px] text-slate-400">
+                <div class="flex justify-between">
+                  <span>Peso: <strong class="text-slate-200">${load.total_weight_kg}</strong> / ${v.max_weight_kg} kg</span>
+                  <span class="font-bold text-slate-200 font-mono">${wPct}%</span>
+                </div>
+                <div class="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                  <div class="${wColor} h-full transition-all duration-500" style="width: ${wPct}%"></div>
+                </div>
+                <div class="flex justify-between pt-0.5">
+                  <span>Cubagem: <strong class="text-slate-200">${load.total_volume_m3}</strong> / ${v.max_volume_m3} m³</span>
+                  <span class="font-bold text-slate-200 font-mono">${vPct}%</span>
+                </div>
+                <div class="w-full bg-slate-800 h-1 rounded-full overflow-hidden">
+                  <div class="${vColor} h-full transition-all duration-500" style="width: ${vPct}%"></div>
+                </div>
+              </div>
+            </div>
+          `;
+        } else {
+          loadHtml = `
+            <div class="text-[11px] text-slate-500 py-2 text-center bg-slate-900/40 rounded-lg mt-2 border border-slate-800/60">
+              Disponível no CD Itajaí (aguardando cálculo)
+            </div>
+          `;
+        }
 
         container.innerHTML += `
-          <div class="bg-slate-950 p-3 rounded-xl border border-slate-800">
-            <div class="flex justify-between items-start mb-2">
+          <div class="bg-slate-950 p-3.5 rounded-xl border border-slate-800 hover:border-slate-700 transition shadow-sm">
+            <div class="flex justify-between items-start mb-1.5">
               <div>
-                <span class="text-xs font-bold text-white">${v.vehicle_id}</span>
-                <span class="text-[10px] text-slate-400 block">${v.model} (${v.plate})</span>
-              </div>
-              <span class="text-[10px] font-semibold px-2 py-0.5 rounded-full ${v.has_refrigeration ? 'bg-cyan-500/10 text-cyan-300 border border-cyan-500/20' : 'bg-slate-800 text-slate-300'}">
-                ${v.has_refrigeration ? '❄️ Refrigerado' : '📦 Baú Seco'}
-              </span>
-            </div>
-            
-            <div class="space-y-1.5 text-[11px] text-slate-400">
-              <div class="flex justify-between text-[10px]">
-                <span>Peso: ${load ? load.total_weight_kg : 0} / ${v.max_weight_kg} kg</span>
-                <span class="font-bold ${wPct > 90 ? 'text-rose-400' : 'text-slate-300'}">${wPct}%</span>
-              </div>
-              <div class="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
-                <div class="${wColor} h-full transition-all duration-500" style="width: ${Math.min(wPct, 100)}%"></div>
+                <!-- Placa Mercosul Clicável -->
+                <div onclick="openItineraryModal('${v.plate}')" 
+                     class="group inline-flex items-center bg-white text-slate-900 border-2 border-slate-700 rounded shadow-md overflow-hidden cursor-pointer hover:ring-2 hover:ring-blue-400 hover:border-blue-500 transition transform hover:-translate-y-0.5 select-none" 
+                     title="Clique para ver o itinerário do dia deste caminhão">
+                  <div class="bg-blue-700 text-white text-[8px] font-bold px-1.5 py-0.5 uppercase tracking-wider flex items-center">
+                    <span class="mr-0.5 text-[9px]">🇧🇷</span> BRASIL
+                  </div>
+                  <div class="px-2 py-0.5 font-mono font-black text-xs tracking-wider text-slate-950 group-hover:text-blue-700 flex items-center">
+                    ${v.plate}
+                    <i data-lucide="chevron-right" class="w-3 h-3 ml-1 text-slate-400 group-hover:text-blue-600"></i>
+                  </div>
+                </div>
+                <div class="text-[11px] font-semibold text-white mt-1">${v.model}</div>
+                <div class="text-[10px] text-slate-400 flex items-center">
+                  <i data-lucide="user" class="w-3 h-3 mr-1 text-slate-500"></i>
+                  ${v.driver_name}
+                </div>
               </div>
 
-              <div class="flex justify-between text-[10px] pt-1">
-                <span>Cubagem: ${load ? load.total_volume_m3 : 0} / ${v.max_volume_m3} m³</span>
-                <span class="font-bold ${vPct > 90 ? 'text-rose-400' : 'text-slate-300'}">${vPct}%</span>
+              <div class="text-right">
+                <span class="text-[10px] font-semibold px-2 py-0.5 rounded-full ${v.has_refrigeration ? 'bg-cyan-500/10 text-cyan-300 border border-cyan-500/20' : 'bg-slate-800 text-slate-300'}">
+                  ${v.has_refrigeration ? '❄️ Refrigerado' : '📦 Carga Seca'}
+                </span>
+                <span class="text-[10px] text-slate-500 block mt-1 font-mono">${v.vehicle_id}</span>
               </div>
-              <div class="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
-                <div class="${vColor} h-full transition-all duration-500" style="width: ${Math.min(vPct, 100)}%"></div>
-              </div>
+            </div>
+
+            ${loadHtml}
+
+            <!-- Botões de Acesso Rápido ao Itinerário e Destaque no Mapa -->
+            <div class="mt-2.5 grid grid-cols-2 gap-1.5">
+              <button onclick="openItineraryModal('${v.plate}')" 
+                      class="py-1.5 px-2 bg-blue-600/15 hover:bg-blue-600 text-blue-300 hover:text-white rounded-lg text-xs font-semibold border border-blue-500/25 hover:border-blue-500 transition flex items-center justify-center space-x-1 shadow-sm">
+                <i data-lucide="calendar-clock" class="w-3.5 h-3.5 mr-1"></i>
+                <span>Itinerário</span>
+              </button>
+              <button onclick="focusVehicleOnMap('${v.plate}')" 
+                      class="py-1.5 px-2 bg-slate-800 hover:bg-blue-600 text-slate-300 hover:text-white rounded-lg text-xs font-semibold border border-slate-700 hover:border-blue-500 transition flex items-center justify-center space-x-1 shadow-sm"
+                      title="Destacar trajeto deste caminhão no mapa">
+                <i data-lucide="navigation" class="w-3.5 h-3.5 mr-1 text-blue-400"></i>
+                <span>No Mapa</span>
+              </button>
             </div>
           </div>
         `;
       });
+
+      lucide.createIcons();
     }
 
     async function triggerDispatchPlan() {
@@ -475,8 +778,11 @@
         const stRes = await fetch(`/api/thread-state/${currentThreadId}`);
         const stData = await stRes.json();
 
+        currentRoutes = stData.routes || [];
+        currentLoads = stData.load_allocation || [];
+
         renderFleetCards(stData.available_fleet, stData.load_allocation);
-        renderRoutesOnMap(stData.routes);
+        await renderRoutesOnMap(stData.routes);
         renderStopsTable(stData.routes);
 
         // Check HITL gate
@@ -542,32 +848,93 @@
       `;
     }
 
+    async function fetchLegGeometry(p1, p2, color, vehicleId) {
+      let polyCoords = [p1, p2];
+      try {
+        // 1. Tenta rota com tráfego em tempo real do Google Maps Platform
+        const trafficUrl = `/api/traffic/route?origin_lat=${p1[0]}&origin_lng=${p1[1]}&dest_lat=${p2[0]}&dest_lng=${p2[1]}`;
+        const tResp = await fetch(trafficUrl);
+        if (tResp.ok) {
+          const tData = await tResp.json();
+          if (tData.coordinates && tData.coordinates.length > 0) {
+            polyCoords = tData.coordinates;
+          }
+        } else {
+          // 2. Fallback para OSRM público se Google Maps não responder
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 2000);
+          const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${p1[1]},${p1[0]};${p2[1]},${p2[0]}?overview=full&geometries=geojson`;
+          const resp = await fetch(osrmUrl, { signal: controller.signal });
+          clearTimeout(timeoutId);
+          if (resp.ok) {
+            const data = await resp.json();
+            if (data.routes && data.routes.length > 0) {
+              polyCoords = data.routes[0].geometry.coordinates.map(c => [c[1], c[0]]);
+            }
+          }
+        }
+      } catch (e) {
+        // Fallback straight line
+      }
+
+      const isStraight = (polyCoords.length === 2);
+      const poly = L.polyline(polyCoords, {
+        color: color,
+        weight: 4,
+        opacity: 0.85,
+        dashArray: isStraight ? '4,4' : null
+      }).addTo(map);
+
+      routeLayers.push(poly);
+      if (vehicleMapData[vehicleId]) {
+        vehicleMapData[vehicleId].polylines.push(poly);
+        polyCoords.forEach(c => vehicleMapData[vehicleId].allPoints.push(c));
+      }
+      return poly;
+    }
+
     async function renderRoutesOnMap(routes) {
       // Clear previous layers & pending pins
       pendingMarkers.forEach(m => map.removeLayer(m));
       pendingMarkers = [];
       routeLayers.forEach(l => map.removeLayer(l));
       routeLayers = [];
+      vehicleMapData = {};
+      hideHighlightBanner();
 
       const colors = {
         'VEH-ITJ-VUC-01': '#3b82f6',
-        'VEH-ITJ-REF-02': '#22d3ee',
+        'VEH-ITJ-VUC-02': '#10b981',
         'VEH-ITJ-TOCO-03': '#f59e0b',
-        'VEH-ITJ-VUC-04': '#10b981',
-        'VEH-ITJ-REF-05': '#06b6d4',
-        'VEH-ITJ-TOCO-06': '#8b5cf6',
-        'VEH-ITJ-TRUCK-07': '#ec4899',
-        'VEH-ITJ-REF-08': '#38bdf8'
+        'VEH-ITJ-TOCO-04': '#8b5cf6',
+        'VEH-ITJ-TRUCK-05': '#ec4899'
       };
+      const defaultColors = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316'];
 
-      const depot = [-26.9315, -48.7010];
+      const depot = [-26.9418, -48.7094];
+      const allCoords = [depot];
+      const allLegPromises = [];
 
-      for (const r of routes) {
-        const color = colors[r.vehicle_id] || '#8b5cf6';
+      for (let rIdx = 0; rIdx < routes.length; rIdx++) {
+        const r = routes[rIdx];
+        const color = colors[r.vehicle_id] || defaultColors[rIdx % defaultColors.length];
         const waypoints = [depot];
+
+        vehicleMapData[r.vehicle_id] = {
+          vehicle_id: r.vehicle_id,
+          plate: r.plate || '',
+          model: r.vehicle_model || '',
+          driver: r.driver_name || '',
+          color: color,
+          polylines: [],
+          markers: [],
+          allPoints: [depot]
+        };
 
         r.stops.forEach(s => {
           waypoints.push([s.lat, s.lng]);
+          allCoords.push([s.lat, s.lng]);
+          vehicleMapData[r.vehicle_id].allPoints.push([s.lat, s.lng]);
 
           // Marker for stop
           const marker = L.circleMarker([s.lat, s.lng], {
@@ -580,44 +947,47 @@
           }).addTo(map);
 
           marker.bindPopup(`
-            <b class="text-slate-900">${s.sequence}. ${s.customer_name}</b><br>
-            <span class="text-xs text-slate-600">${s.address}</span><br>
-            <span class="text-xs">Janela: ${s.window_start}-${s.window_end} | ETA: <b>${s.estimated_arrival}</b></span>
+            <div class="text-slate-900 leading-tight">
+              <div class="flex items-center space-x-1.5 mb-1">
+                <span class="text-[9px] font-bold px-1.5 py-0.5 rounded bg-slate-900 text-white font-mono">${r.plate || r.vehicle_id}</span>
+                <span class="text-[9px] font-semibold text-slate-600">Parada ${s.sequence} · ETA ${s.estimated_arrival}</span>
+              </div>
+              <b class="text-xs font-bold text-slate-900">${s.customer_name}</b><br>
+              <span class="text-[11px] text-slate-600">${s.address}</span><br>
+              <div class="text-[11px] text-slate-700 mt-1.5 border-t border-slate-200 pt-1">
+                Pedido: <b>${s.order_id}</b><br>
+                Janela: <b>${s.window_start} - ${s.window_end}</b> | Previsão: <b class="text-blue-700">${s.estimated_arrival}</b>
+              </div>
+              <div class="mt-2.5 pt-1.5 border-t border-slate-200 flex space-x-1.5">
+                <button onclick="focusVehicleOnMap('${r.plate || r.vehicle_id}')" class="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-[10px] font-bold transition flex items-center">
+                  <i data-lucide="navigation" class="w-3 h-3 mr-1"></i> Destacar Rota
+                </button>
+                <button onclick="openItineraryModal('${r.plate || r.vehicle_id}')" class="px-2 py-1 bg-slate-200 hover:bg-slate-300 text-slate-800 rounded text-[10px] font-semibold transition flex items-center">
+                  <i data-lucide="calendar" class="w-3 h-3 mr-1"></i> Itinerário
+                </button>
+              </div>
+            </div>
           `);
 
           routeLayers.push(marker);
+          vehicleMapData[r.vehicle_id].markers.push(marker);
         });
 
         waypoints.push(depot);
 
-        // Fetch real street geometry for each leg via OpenStreetMap / OSRM
+        // Fetch real street geometries for each leg in parallel
         for (let i = 0; i < waypoints.length - 1; i++) {
           const p1 = waypoints[i];
           const p2 = waypoints[i + 1];
-
-          try {
-            const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${p1[1]},${p1[0]};${p2[1]},${p2[0]}?overview=full&geometries=geojson`;
-            const resp = await fetch(osrmUrl);
-            const data = await resp.json();
-
-            if (data.routes && data.routes.length > 0) {
-              const roadCoords = data.routes[0].geometry.coordinates.map(c => [c[1], c[0]]);
-              const poly = L.polyline(roadCoords, {
-                color: color,
-                weight: 4,
-                opacity: 0.85
-              }).addTo(map);
-              routeLayers.push(poly);
-            } else {
-              // Fallback to straight line
-              const poly = L.polyline([p1, p2], { color: color, weight: 3, opacity: 0.6, dashArray: '4,4' }).addTo(map);
-              routeLayers.push(poly);
-            }
-          } catch (e) {
-            const poly = L.polyline([p1, p2], { color: color, weight: 3, opacity: 0.6, dashArray: '4,4' }).addTo(map);
-            routeLayers.push(poly);
-          }
+          allLegPromises.push(fetchLegGeometry(p1, p2, color, r.vehicle_id));
         }
+      }
+
+      await Promise.all(allLegPromises);
+
+      // Auto-fit map to encompass CD depot and all delivery stops (Itajaí, BC, Brusque)
+      if (allCoords.length > 1) {
+        map.fitBounds(L.latLngBounds(allCoords), { padding: [40, 40] });
       }
     }
 
@@ -632,14 +1002,31 @@
         totalKm += r.total_distance_km;
         r.stops.forEach(s => {
           stopCount++;
-          const badge = s.on_time 
-            ? '<span class="px-2 py-0.5 rounded text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">✓ No Prazo</span>'
-            : '<span class="px-2 py-0.5 rounded text-[10px] bg-rose-500/10 text-rose-400 border border-rose-500/20">✗ Atraso</span>';
+          const badge = s.on_time
+            ? '<span class="px-2 py-0.5 rounded text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-semibold">✓ No Prazo</span>'
+            : '<span class="px-2 py-0.5 rounded text-[10px] bg-rose-500/10 text-rose-400 border border-rose-500/20 font-semibold">✗ Atraso</span>';
 
           tbody.innerHTML += `
             <tr class="hover:bg-slate-800/40 transition">
-              <td class="py-3 px-4 font-bold text-slate-200">${r.vehicle_id}</td>
-              <td class="py-3 px-3 text-center text-slate-400">${s.sequence}</td>
+              <td class="py-3 px-4 font-bold text-slate-200">
+                <div class="flex items-center space-x-1.5">
+                  <button onclick="openItineraryModal('${r.plate || r.vehicle_id}')" 
+                          class="inline-flex items-center space-x-1 text-blue-400 hover:text-blue-300 font-mono text-xs font-bold underline decoration-blue-500/40 hover:decoration-blue-400 transition" 
+                          title="Clique para ver o itinerário completo do dia deste caminhão">
+                    <span>${r.plate || r.vehicle_id}</span>
+                    <i data-lucide="external-link" class="w-3 h-3 ml-0.5"></i>
+                  </button>
+                  <button onclick="focusVehicleOnMap('${r.plate || r.vehicle_id}')" 
+                          class="p-1 text-slate-400 hover:text-blue-400 hover:bg-slate-800 rounded transition" 
+                          title="Destacar esta rota no mapa">
+                    <i data-lucide="map" class="w-3.5 h-3.5"></i>
+                  </button>
+                </div>
+                <span class="text-[10px] text-slate-400 block font-normal mt-0.5">${r.vehicle_model || r.vehicle_id}</span>
+              </td>
+              <td class="py-3 px-3 text-center text-slate-300 font-mono">
+                ${s.sequence}
+              </td>
               <td class="py-3 px-4">
                 <div class="text-slate-100 font-semibold">${s.customer_name}</div>
                 <div class="text-[10px] text-slate-400">${s.address}</div>
@@ -653,9 +1040,415 @@
       });
 
       document.getElementById('routeSummaryBadge').innerText = `${stopCount} paradas | ${totalKm.toFixed(1)} km rodados`;
+      lucide.createIcons();
     }
+
+    async function openItineraryModal(identifier) {
+      if (!identifier) return;
+      currentModalIdentifier = identifier;
+      const cleanId = identifier.replace(/-/g, '').trim().toUpperCase();
+
+      // Look in currentRoutes or currentLoads or currentFleet
+      let matchedRoute = currentRoutes.find(r =>
+        (r.plate && r.plate.replace(/-/g, '').trim().toUpperCase() === cleanId) ||
+        (r.vehicle_id && r.vehicle_id.replace(/-/g, '').trim().toUpperCase() === cleanId)
+      );
+
+      let matchedLoad = currentLoads.find(l =>
+        (l.plate && l.plate.replace(/-/g, '').trim().toUpperCase() === cleanId) ||
+        (l.vehicle_id && l.vehicle_id.replace(/-/g, '').trim().toUpperCase() === cleanId)
+      );
+
+      let matchedVehicle = currentFleet.find(v =>
+        (v.plate && v.plate.replace(/-/g, '').trim().toUpperCase() === cleanId) ||
+        (v.vehicle_id && v.vehicle_id.replace(/-/g, '').trim().toUpperCase() === cleanId)
+      );
+
+      // If we don't have routes loaded in memory yet, fetch from backend endpoint
+      if (!matchedRoute || !matchedRoute.itinerary || matchedRoute.itinerary.length === 0) {
+        try {
+          const res = await fetch(`/api/vehicle/${identifier}/itinerary`);
+          if (res.ok) {
+            const fetched = await res.json();
+            if (fetched && fetched.itinerary && fetched.itinerary.length > 0) {
+              matchedRoute = fetched;
+            }
+          }
+        } catch (e) {
+          console.error('Erro ao buscar itinerário:', e);
+        }
+      }
+
+      const plate = matchedRoute?.plate || matchedLoad?.plate || matchedVehicle?.plate || identifier;
+      const model = matchedRoute?.vehicle_model || matchedLoad?.vehicle_model || matchedVehicle?.model || 'Caminhão de Distribuição';
+      const driver = matchedRoute?.driver_name || matchedLoad?.driver_name || matchedVehicle?.driver_name || 'Motorista Titular';
+      const phone = matchedRoute?.driver_phone || matchedLoad?.driver_phone || matchedVehicle?.driver_phone || '(47) 99123-4567';
+      const maxW = matchedVehicle?.max_weight_kg || matchedLoad?.max_weight_kg || matchedRoute?.max_weight_kg || 1600;
+      const maxV = matchedVehicle?.max_volume_m3 || matchedLoad?.max_volume_m3 || matchedRoute?.max_volume_m3 || 11.0;
+      const vehicleId = matchedRoute?.vehicle_id || matchedLoad?.vehicle_id || matchedVehicle?.vehicle_id || '';
+
+      selectedVehicleForMap = {
+        vehicle_id: vehicleId,
+        plate: plate,
+        model: model,
+        driver: driver
+      };
+
+      const btnFocus = document.getElementById('btnFocusMap');
+      if (btnFocus) {
+        btnFocus.setAttribute('onclick', `focusVehicleOnMap('${plate || vehicleId || identifier}')`);
+      }
+
+      // Populate Header
+      document.getElementById('modalPlateText').innerText = plate;
+      document.getElementById('modalVehicleModel').innerText = model;
+      document.getElementById('modalDriverName').innerText = driver;
+      document.getElementById('modalDriverPhone').innerText = phone;
+
+      // Populate KPIs
+      const itinerary = matchedRoute?.itinerary || [];
+      const stops = matchedRoute?.stops || [];
+      const loadW = matchedLoad?.total_weight_kg ?? (stops.length ? stops.reduce((a, s) => a + (s.weight_kg || 0), 0) : null);
+      const loadV = matchedLoad?.total_volume_m3 ?? (stops.length ? stops.reduce((a, s) => a + (s.volume_m3 || 0), 0) : null);
+      if (loadW !== null && loadW !== undefined && stops.length) {
+        const wPct = Math.min(Math.round((loadW / maxW) * 1000) / 10, 100);
+        const vPct = Math.min(Math.round((loadV / maxV) * 1000) / 10, 100);
+        document.getElementById('modalKpiCapacity').innerText = `${Math.round(loadW)} kg (${wPct}%) | ${Number(loadV).toFixed(1)} m³ (${vPct}%)`;
+      } else {
+        document.getElementById('modalKpiCapacity').innerText = `Capacidade: ${maxW} kg | ${maxV} m³`;
+      }
+
+      document.getElementById('modalKpiDistance').innerText = matchedRoute?.total_distance_km
+        ? `${matchedRoute.total_distance_km.toFixed(1)} km`
+        : '0.0 km';
+
+      const shiftSub = document.getElementById('modalKpiShiftSub');
+      if (matchedRoute?.shift_start && matchedRoute?.shift_end) {
+        document.getElementById('modalKpiShift').innerText = `${matchedRoute.shift_start} ➔ ${matchedRoute.shift_end}`;
+        const within = matchedRoute.within_shift_limit !== false;
+        shiftSub.innerText = within ? 'Dentro do limite legal (11h)' : 'EXCEDE o limite legal de 11h';
+        shiftSub.className = within ? 'text-[10px] text-emerald-400 mt-0.5' : 'text-[10px] text-rose-400 mt-0.5 font-bold';
+      } else {
+        document.getElementById('modalKpiShift').innerText = '05:00 ➔ -';
+        shiftSub.innerText = 'Carregamento inicia às 05:00';
+        shiftSub.className = 'text-[10px] text-slate-400 mt-0.5';
+      }
+
+      const lunchStep = itinerary.find(st => st.type === 'LUNCH');
+      document.getElementById('modalKpiLunch').innerText = lunchStep ? `${lunchStep.time_start} ➔ ${lunchStep.time_end}` : '1h00 Obrigatório';
+      document.getElementById('modalKpiLunchSub').innerText = lunchStep ? (lunchStep.location || '') : 'Após a primeira entrega concluída depois das 11:30';
+
+      // Summary chips
+      const summary = document.getElementById('modalRouteSummary');
+      if (stops.length) {
+        const onTime = stops.filter(st => st.on_time).length;
+        const late = stops.length - onTime;
+        const frozen = stops.filter(st => st.temperature_regime === 'CONGELADO').length;
+        summary.innerHTML = `
+          <span class="px-2.5 py-1 rounded-lg bg-blue-500/15 text-blue-300 border border-blue-500/30">${stops.length} paradas</span>
+          <span class="px-2.5 py-1 rounded-lg bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">✓ ${onTime} no prazo</span>
+          ${late ? `<span class="px-2.5 py-1 rounded-lg bg-rose-500/15 text-rose-300 border border-rose-500/30">✗ ${late} atraso</span>` : ''}
+          <span class="px-2.5 py-1 rounded-lg bg-cyan-500/15 text-cyan-300 border border-cyan-500/30">❄️ ${frozen} congelado / ${stops.length - frozen} resfriado</span>
+        `;
+      } else {
+        summary.innerHTML = '';
+      }
+
+      // Timeline
+      const timelineContainer = document.getElementById('modalTimelineList');
+      timelineContainer.innerHTML = '';
+
+      if (!itinerary || itinerary.length === 0) {
+        timelineContainer.innerHTML = `
+          <div class="p-5 bg-slate-950/80 rounded-xl border border-slate-800 text-center">
+            <i data-lucide="calendar" class="w-8 h-8 text-blue-400 mx-auto mb-2"></i>
+            <div class="font-bold text-white text-sm">Escala Operacional Padrão</div>
+            <p class="text-xs text-slate-400 mt-1 max-w-md mx-auto">
+              Veículo disponível no CD Itajaí. Clique em <strong>"Calcular Rotas (Multi-Agente)"</strong> no cabeçalho
+              para agrupar os pedidos por proximidade e sequenciar as entregas de hoje.
+            </p>
+            <div class="mt-4 pt-3 border-t border-slate-800/80 grid grid-cols-1 sm:grid-cols-2 gap-2 text-left text-xs text-slate-300">
+              <div class="p-2 rounded bg-slate-900 border border-slate-800">🏢 05:00 - 06:00: Carregamento refrigerado no CD Itajaí</div>
+              <div class="p-2 rounded bg-slate-900 border border-slate-800">🚛 06:00: Saída para a rota do dia (múltiplas paradas)</div>
+              <div class="p-2 rounded bg-slate-900 border border-slate-800">🍽️ 1h de almoço obrigatório (Lei 13.103/2015)</div>
+              <div class="p-2 rounded bg-slate-900 border border-slate-800">🏁 Retorno ao CD e encerramento legal do turno</div>
+            </div>
+          </div>
+        `;
+      } else {
+        const styleFor = (step) => {
+          switch (step.type) {
+            case 'LOADING': return { icon: 'package', node: 'border-blue-500 bg-blue-950 text-blue-400', badge: 'bg-blue-500/15 text-blue-300 border border-blue-500/30' };
+            case 'TRANSIT_OUT': return { icon: 'truck', node: 'border-indigo-500 bg-indigo-950 text-indigo-400', badge: 'bg-indigo-500/15 text-indigo-300 border border-indigo-500/30' };
+            case 'UNLOADING': return step.on_time === false
+              ? { icon: 'map-pin', node: 'border-rose-500 bg-rose-950 text-rose-400', badge: 'bg-rose-500/15 text-rose-300 border border-rose-500/30' }
+              : { icon: 'map-pin', node: 'border-emerald-500 bg-emerald-950 text-emerald-400', badge: 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30' };
+            case 'LUNCH': return { icon: 'utensils', node: 'border-amber-500 bg-amber-950 text-amber-400', badge: 'bg-amber-500/20 text-amber-200 border border-amber-500/40' };
+            case 'TRANSIT_RETURN': return { icon: 'rotate-ccw', node: 'border-slate-500 bg-slate-900 text-slate-400', badge: 'bg-slate-800 text-slate-300 border border-slate-700' };
+            case 'SHIFT_END': return step.badge_color === 'rose'
+              ? { icon: 'alert-triangle', node: 'border-rose-400 bg-rose-950 text-rose-300', badge: 'bg-rose-500/25 text-rose-300 border border-rose-500/50' }
+              : { icon: 'check-circle-2', node: 'border-emerald-400 bg-emerald-950 text-emerald-300', badge: 'bg-emerald-500/25 text-emerald-300 border border-emerald-500/50' };
+            default: return { icon: 'circle', node: 'border-slate-500 bg-slate-900 text-slate-400', badge: 'bg-slate-800 text-slate-300 border border-slate-700' };
+          }
+        };
+
+        const renderStep = (step) => {
+          const st = styleFor(step);
+          const isLunch = step.type === 'LUNCH';
+          const wrapper = isLunch
+            ? 'bg-gradient-to-r from-amber-950/40 via-slate-900 to-amber-950/30 border-amber-500/50'
+            : 'bg-slate-950/90 border-slate-800/90 hover:border-slate-700';
+          let details = '';
+          if (step.order_id) {
+            details = `
+              <div class="mt-2.5 pt-2 border-t border-slate-800/80 grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] text-slate-400">
+                <div>Pedido: <strong class="text-slate-200 font-mono">${step.order_id}</strong></div>
+                ${step.weight_kg ? `<div>Peso: <strong class="text-slate-200">${step.weight_kg} kg</strong></div>` : ''}
+                ${step.volume_m3 ? `<div>Volume: <strong class="text-slate-200">${step.volume_m3} m³</strong></div>` : ''}
+                ${step.window ? `<div>Janela: <strong class="text-slate-200">${step.window}</strong></div>` : ''}
+                ${step.eta ? `<div>Chegada: <strong class="text-blue-400">${step.eta}</strong></div>` : ''}
+              </div>
+            `;
+          }
+          return `
+            <div class="relative">
+              <div class="absolute -left-[27px] sm:-left-[35px] top-1.5 w-6 h-6 sm:w-7 sm:h-7 rounded-full border-2 ${st.node} flex items-center justify-center shadow-md bg-slate-950">
+                <i data-lucide="${st.icon}" class="w-3.5 h-3.5"></i>
+              </div>
+              <div class="p-3.5 rounded-xl border ${wrapper} transition">
+                <div class="flex flex-wrap justify-between items-start gap-1">
+                  <div>
+                    <span class="text-xs font-bold text-white">${step.title}</span>
+                    <span class="text-[11px] text-slate-400 block mt-0.5">${step.location || ''}</span>
+                  </div>
+                  <div class="flex items-center space-x-2">
+                    <span class="font-mono text-xs font-bold text-slate-200 bg-slate-900 px-2 py-0.5 rounded border border-slate-800">
+                      ${step.time_start} - ${step.time_end}
+                    </span>
+                    <span class="text-[10px] font-semibold px-2 py-0.5 rounded-full ${st.badge}">${step.badge || step.type}</span>
+                  </div>
+                </div>
+                <p class="text-xs text-slate-300 mt-1.5 leading-relaxed">${step.description || ''}</p>
+                ${details}
+              </div>
+            </div>
+          `;
+        };
+
+        timelineContainer.innerHTML = `
+          <div class="bg-gradient-to-b from-blue-950/30 via-slate-900/60 to-slate-950/80 border-2 border-blue-500/40 rounded-2xl p-4 sm:p-5 shadow-xl">
+            <div class="relative pl-5 sm:pl-7 border-l-2 border-blue-500/40 ml-3 sm:ml-4 space-y-3.5">
+              ${itinerary.map(renderStep).join('')}
+            </div>
+          </div>
+        `;
+      }
+
+      document.getElementById('itineraryModal').classList.remove('hidden');
+      lucide.createIcons();
+    }
+
+    function closeItineraryModal() {
+      document.getElementById('itineraryModal').classList.add('hidden');
+    }
+
+    async function focusVehicleOnMap(identifier) {
+      const targetId = identifier || currentModalIdentifier || selectedVehicleForMap?.plate || selectedVehicleForMap?.vehicle_id;
+      closeItineraryModal();
+
+      const mapElem = document.getElementById('mapCard') || document.getElementById('map');
+      if (mapElem) {
+        mapElem.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+
+      if (!targetId) return;
+
+      // If routes have not been calculated yet or layers are empty, calculate automatically!
+      if (!currentRoutes || currentRoutes.length === 0 || Object.keys(vehicleMapData).length === 0) {
+        showMapToast(`Calculando rotas e preparando mapa para destacar ${targetId}...`, true);
+        await triggerDispatchPlan();
+        hideMapToast();
+      }
+
+      setTimeout(() => {
+        highlightVehicleRoute(targetId);
+      }, 350);
+    }
+
+    function highlightVehicleRoute(identifier) {
+      if (!identifier) return;
+      const cleanId = identifier.replace(/-/g, '').trim().toUpperCase();
+
+      // Find target in vehicleMapData
+      let targetKey = Object.keys(vehicleMapData).find(vId => {
+        const d = vehicleMapData[vId];
+        return vId.replace(/-/g, '').trim().toUpperCase() === cleanId ||
+          (d.plate && d.plate.replace(/-/g, '').trim().toUpperCase() === cleanId);
+      });
+
+      if (!targetKey) {
+        console.warn('Veículo não encontrado nas camadas do mapa:', identifier);
+        showMapToast(`Veículo ${identifier} não possui rotas calculadas no mapa.`, false, 3000);
+        return;
+      }
+
+      const target = vehicleMapData[targetKey];
+      currentHighlightedVehicleId = target.vehicle_id;
+
+      // Iterate through all vehicle layers
+      Object.keys(vehicleMapData).forEach(vId => {
+        const isTarget = (vId === target.vehicle_id);
+        const d = vehicleMapData[vId];
+
+        if (isTarget) {
+          d.polylines.forEach(poly => {
+            poly.setStyle({
+              color: d.color,
+              weight: 7,
+              opacity: 1.0,
+              dashArray: null
+            });
+            poly.bringToFront();
+          });
+
+          d.markers.forEach((m, idx) => {
+            m.setRadius(10);
+            m.setStyle({
+              color: '#ffffff',
+              weight: 3,
+              opacity: 1.0,
+              fillOpacity: 1.0,
+              fillColor: d.color
+            });
+            m.bringToFront();
+            if (idx === 0) {
+              m.openPopup();
+            }
+          });
+        } else {
+          d.polylines.forEach(poly => {
+            poly.setStyle({
+              color: '#64748b',
+              weight: 2,
+              opacity: 0.15,
+              dashArray: '4, 6'
+            });
+          });
+
+          d.markers.forEach(m => {
+            m.setRadius(5);
+            m.setStyle({
+              color: '#94a3b8',
+              weight: 1,
+              opacity: 0.25,
+              fillOpacity: 0.2
+            });
+          });
+        }
+      });
+
+      // Fit map bounds to target route points
+      if (target.allPoints && target.allPoints.length > 0) {
+        const bounds = L.latLngBounds(target.allPoints);
+        map.fitBounds(bounds, { padding: [60, 60], maxZoom: 14, animate: true });
+      }
+
+      // Show floating banner
+      showHighlightBanner(target);
+    }
+
+    function resetMapHighlight() {
+      currentHighlightedVehicleId = null;
+      hideHighlightBanner();
+
+      const allPoints = [[-26.9418, -48.7094]];
+
+      Object.keys(vehicleMapData).forEach(vId => {
+        const d = vehicleMapData[vId];
+        d.polylines.forEach(poly => {
+          poly.setStyle({
+            color: d.color,
+            weight: 4,
+            opacity: 0.85,
+            dashArray: null
+          });
+        });
+
+        d.markers.forEach(m => {
+          m.setRadius(7);
+          m.setStyle({
+            color: '#ffffff',
+            weight: 2,
+            opacity: 1.0,
+            fillOpacity: 0.95,
+            fillColor: d.color
+          });
+        });
+
+        d.allPoints.forEach(pt => allPoints.push(pt));
+      });
+
+      if (allPoints.length > 1) {
+        map.fitBounds(L.latLngBounds(allPoints), { padding: [40, 40], animate: true });
+      }
+    }
+
+    function showHighlightBanner(target) {
+      const banner = document.getElementById('mapHighlightBanner');
+      if (!banner) return;
+
+      const plateBadge = document.getElementById('bannerPlateBadge');
+      const infoText = document.getElementById('bannerVehicleInfo');
+      const ping = document.getElementById('bannerPulsePing');
+      const dot = document.getElementById('bannerPulseDot');
+
+      if (plateBadge) plateBadge.innerText = target.plate || target.vehicle_id;
+      if (infoText) infoText.innerText = `${target.model || 'Caminhão'} • ${target.driver || 'Motorista'}`;
+      if (ping) ping.style.backgroundColor = target.color;
+      if (dot) dot.style.backgroundColor = target.color;
+
+      banner.classList.remove('hidden');
+      lucide.createIcons();
+    }
+
+    function hideHighlightBanner() {
+      const banner = document.getElementById('mapHighlightBanner');
+      if (banner) banner.classList.add('hidden');
+    }
+
+    function showMapToast(text, isLoader = false, timeoutMs = 0) {
+      const toast = document.getElementById('mapToast');
+      const toastText = document.getElementById('mapToastText');
+      if (!toast || !toastText) return;
+
+      toastText.innerText = text;
+      toast.classList.remove('hidden');
+      lucide.createIcons();
+
+      if (timeoutMs > 0) {
+        setTimeout(() => {
+          hideMapToast();
+        }, timeoutMs);
+      }
+    }
+
+    function hideMapToast() {
+      const toast = document.getElementById('mapToast');
+      if (toast) toast.classList.add('hidden');
+    }
+
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closeItineraryModal();
+    });
+
+    document.getElementById('itineraryModal').addEventListener('click', (e) => {
+      if (e.target === document.getElementById('itineraryModal')) {
+        closeItineraryModal();
+      }
+    });
 
     loadDashboard();
   </script>
 </body>
+
 </html>

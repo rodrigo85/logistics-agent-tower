@@ -5,7 +5,7 @@ with a Human-in-the-Loop (HITL) interrupt gate before final dispatch.
 """
 
 import logging
-from typing import Any, Dict
+from typing import Any
 
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import interrupt
@@ -21,7 +21,7 @@ from logistics_tower.state import LogisticsAgentState
 logger = logging.getLogger(__name__)
 
 
-def hitl_gate_node(state: LogisticsAgentState) -> Dict[str, Any]:
+def hitl_gate_node(state: LogisticsAgentState) -> dict[str, Any]:
     """
     Human-in-the-Loop (HITL) Gate:
     If capacity or SLA risk is flagged, pauses graph execution using LangGraph interrupt().
@@ -51,23 +51,26 @@ def hitl_gate_node(state: LogisticsAgentState) -> Dict[str, Any]:
         return {
             "human_verdict": verdict,
             "human_feedback": feedback,
-            "execution_log": state.get("execution_log", []) + [f"HITL: Despachante respondeu: {verdict}. Feedback: {feedback}"],
+            "execution_log": [
+                *state.get("execution_log", []),
+                f"HITL: Despachante respondeu: {verdict}. Feedback: {feedback}",
+            ],
         }
 
     return {
         "human_verdict": "APPROVED",
         "human_feedback": "Aprovação automática ou nenhuma inconsistência crítica.",
-        "execution_log": state.get("execution_log", []) + ["HITL: Plano aprovado sem interrupções."],
+        "execution_log": [*state.get("execution_log", []), "HITL: Plano aprovado sem interrupções."],
     }
 
 
-def reject_dispatch_node(state: LogisticsAgentState) -> Dict[str, Any]:
+def reject_dispatch_node(state: LogisticsAgentState) -> dict[str, Any]:
     """Handles dispatch cancellation when rejected by human operator."""
     log_msg = f"Supervisor: Despacho cancelado pelo operador humano. Motivo: {state.get('human_feedback', 'N/A')}"
     logger.warning(log_msg)
     return {
         "dispatch_manifest": None,
-        "execution_log": state.get("execution_log", []) + [log_msg],
+        "execution_log": [*state.get("execution_log", []), log_msg],
     }
 
 

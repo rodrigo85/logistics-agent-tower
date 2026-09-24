@@ -4,12 +4,24 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "logistics-agent-tower"
-version = "1.0.0"
-description = "Autonomous Multi-Agent Control Tower for CD Delivery Dispatch & Route Optimization with LangGraph, MCP, HITL and GCP."
+version = "1.2.0"
+description = "Autonomous multi-agent control tower for distribution-center dispatch and route optimization (LangGraph, OR-Tools, MCP, Human-in-the-Loop)."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
 authors = [{ name = "Rodrigo Andreatta da Costa" }]
+keywords = ["logistics", "vrp", "or-tools", "langgraph", "mcp", "human-in-the-loop", "fastapi", "multi-agent"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Framework :: FastAPI",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
 dependencies = [
     "langgraph>=1.2.12",
     "langchain-core>=0.3.0",
@@ -19,10 +31,21 @@ dependencies = [
     "rich>=13.7.0",
     "fastapi>=0.110.0",
     "uvicorn[standard]>=0.29.0",
+    "httpx>=0.27.0",
     "typing_extensions>=4.10.0",
+    "sqlalchemy>=2.0.0",
+    "ortools>=9.8.0",
 ]
 
+[project.urls]
+Homepage = "https://github.com/rodrigo85/logistics-agent-tower"
+Repository = "https://github.com/rodrigo85/logistics-agent-tower"
+Issues = "https://github.com/rodrigo85/logistics-agent-tower/issues"
+
 [project.optional-dependencies]
+postgres = [
+    "psycopg[binary]>=3.1.0",
+]
 gcp = [
     "langchain-google-genai>=2.0.0",
     "google-cloud-bigquery>=3.20.0",
@@ -39,22 +62,103 @@ mcp = [
 dev = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.0",
-    "httpx>=0.27.0",
-    "ruff>=0.3.0",
+    "pytest-cov>=5.0.0",
+    "ruff>=0.6.0",
+    "mypy>=1.10.0",
+    "pre-commit>=3.7.0",
 ]
 
 [project.scripts]
 logistics-tower = "logistics_tower.cli:main"
 logistics-tower-api = "logistics_tower.api.main:start"
+logistics-tower-seed = "logistics_tower.db.seed:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+"logistics_tower.api" = ["templates/*.html"]
+
+# --------------------------------------------------------------------------------------
+# Ruff: linter + formatter (single tool replaces flake8, isort, pyupgrade, black)
+# --------------------------------------------------------------------------------------
 [tool.ruff]
 line-length = 120
 target-version = "py310"
 src = ["src", "tests"]
+extend-exclude = ["infra", "data"]
 
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "UP",   # pyupgrade
+    "B",    # flake8-bugbear
+    "SIM",  # flake8-simplify
+    "C4",   # flake8-comprehensions
+    "PERF", # perflint
+    "RUF",  # ruff-specific
+]
+ignore = [
+    "E501",   # line length is enforced by the formatter
+    "B008",   # function calls in argument defaults (FastAPI Depends pattern)
+    "RUF001", # ambiguous unicode characters in strings (pt-BR text and emojis are intentional)
+    "RUF002",
+    "RUF003",
+    "RUF012", # mutable class attributes (SQLAlchemy / pydantic patterns)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["B011", "SIM117"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["logistics_tower"]
+
+[tool.ruff.format]
+quote-style = "double"
+docstring-code-format = true
+
+# --------------------------------------------------------------------------------------
+# Pytest
+# --------------------------------------------------------------------------------------
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+addopts = "-ra --strict-markers"
+markers = [
+    "integration: tests that call external services (Google Maps API); skipped when credentials are absent",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning:importlib._bootstrap",
+]
+
+# --------------------------------------------------------------------------------------
+# Coverage
+# --------------------------------------------------------------------------------------
+[tool.coverage.run]
+source = ["logistics_tower"]
+branch = true
+omit = [
+    "src/logistics_tower/db/address_pool.py",
+    "src/logistics_tower/mcp/server.py",
+]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+fail_under = 70
+
+# --------------------------------------------------------------------------------------
+# Mypy (gradual typing; strictness can be raised module by module)
+# --------------------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.10"
+packages = ["logistics_tower"]
+mypy_path = "src"
+ignore_missing_imports = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+no_implicit_optional = true
+check_untyped_defs = true

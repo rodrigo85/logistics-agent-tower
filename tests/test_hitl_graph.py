@@ -1,69 +1,75 @@
-"""Unit tests for LangGraph Multi-Agent Orchestration & Human-in-the-Loop Gate."""
+"""Tests for the LangGraph multi-agent orchestration and the Human-in-the-Loop gate."""
 
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.types import Command
 
+from logistics_tower.config import settings
 from logistics_tower.graph import build_logistics_graph
 
 
-def test_graph_hitl_interrupt_and_approval():
-    checkpointer = MemorySaver()
-    graph = build_logistics_graph(checkpointer=checkpointer)
-
-    thread_id = "test-thread-hitl-01"
-    config = {"configurable": {"thread_id": thread_id}}
-
-    initial_state = {
-        "cd_id": "CD-ITAJAI-SC01",
+def _initial_state() -> dict:
+    return {
+        "cd_id": settings.default_cd_id,
         "requires_human_approval": False,
         "human_verdict": None,
         "execution_log": [],
     }
 
-    # First invocation: Should reach hitl_gate and pause because risks were flagged!
-    graph.invoke(initial_state, config=config)
-    curr_state = graph.get_state(config)
 
-    # Assert paused at interrupt
-    assert any(t.interrupts for t in curr_state.tasks), "Graph should pause at Human-in-the-Loop gate"
+def test_graph_runs_all_agents_and_produces_multi_stop_routes():
+    graph = build_logistics_graph(checkpointer=MemorySaver())
+    config = {"configurable": {"thread_id": "test-thread-plan"}}
 
-    # Human supervisor approves the dispatch
+    graph.invoke(_initial_state(), config=config)
+    values = graph.get_state(config).values
+
+    assert values["customer_rules"], "supervisor must load long-term customer rules"
+    assert values["load_allocation"], "fleet agent must build loads"
+    assert values["routes"], "routing agent must build routes"
+    assert sum(len(r["stops"]) for r in values["routes"]) == 40
+    assert all(len(r["stops"]) <= settings.max_stops_per_vehicle for r in values["routes"])
+    assert all(r["itinerary"][0]["time_start"] == "05:00" for r in values["routes"])
+    assert len(values["execution_log"]) >= 4
+
+
+def test_graph_hitl_interrupt_and_approval(force_hitl):
+    graph = build_logistics_graph(checkpointer=MemorySaver())
+    config = {"configurable": {"thread_id": "test-thread-hitl-01"}}
+
+    graph.invoke(_initial_state(), config=config)
+    snapshot = graph.get_state(config)
+    assert any(t.interrupts for t in snapshot.tasks), "graph should pause at the Human-in-the-Loop gate"
+    assert snapshot.values["requires_human_approval"] is True
+
     resumed = graph.invoke(
         Command(resume={"verdict": "APPROVED", "feedback": "Despacho autorizado com ressalvas"}),
         config=config,
     )
 
-    # Assert graph resumed to completion and emitted manifest
     manifest = resumed.get("dispatch_manifest")
     assert manifest is not None
     assert manifest["status"] == "DISPATCHED"
-    assert manifest["total_orders_dispatched"] > 0
-    assert manifest["total_vehicles_assigned"] > 0
+    assert manifest["total_orders_dispatched"] == 40
+    assert manifest["total_vehicles_assigned"] == len(resumed["routes"])
 
 
-def test_graph_hitl_interrupt_and_rejection():
-    checkpointer = MemorySaver()
-    graph = build_logistics_graph(checkpointer=checkpointer)
+def test_graph_hitl_interrupt_and_rejection(force_hitl):
+    graph = build_logistics_graph(checkpointer=MemorySaver())
+    config = {"configurable": {"thread_id": "test-thread-hitl-reject"}}
 
-    thread_id = "test-thread-hitl-reject"
-    config = {"configurable": {"thread_id": thread_id}}
-
-    initial_state = {
-        "cd_id": "CD-ITAJAI-SC01",
-        "requires_human_approval": False,
-        "human_verdict": None,
-        "execution_log": [],
-    }
-
-    # Pause at HITL gate
-    graph.invoke(initial_state, config=config)
-
-    # Human supervisor rejects the dispatch
+    graph.invoke(_initial_state(), config=config)
     resumed = graph.invoke(
-        Command(resume={"verdict": "REJECTED", "feedback": "Sobrecarga de frota inaceitavel"}),
+        Command(resume={"verdict": "REJECTED", "feedback": "Sobrecarga de frota inaceitável"}),
         config=config,
     )
+    assert resumed.get("dispatch_manifest") is None
 
-    # Manifest should be None or cancelled
-    manifest = resumed.get("dispatch_manifest")
-    assert manifest is None
+
+def test_graph_auto_approve_skips_the_gate(force_hitl, monkeypatch):
+    monkeypatch.setattr(settings, "hitl_auto_approve", True)
+    graph = build_logistics_graph(checkpointer=MemorySaver())
+    config = {"configurable": {"thread_id": "test-thread-auto"}}
+
+    result = graph.invoke(_initial_state(), config=config)
+    assert not any(t.interrupts for t in graph.get_state(config).tasks)
+    assert result["dispatch_manifest"]["status"] == "DISPATCHED"

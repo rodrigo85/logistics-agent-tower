@@ -1,429 +1,216 @@
 """
-Database Seeder for Logistics Control Tower.
-Populates customers, fleet, customer rules, and orders for Itajaí - SC and coastal hubs.
+Idempotent database seeder for the cold-chain operation of CD Itajaí.
+
+Converges the schema, the five refrigerated trucks and the regional customer pool
+on every call. Orders are (re)generated from a fixed random seed only when the
+pending set is missing or inconsistent, or when `force_reseed=True`.
 """
 
 import logging
-from logistics_tower.db.models import Customer, CustomerRule, Order, Vehicle
-from logistics_tower.db.session import SessionLocal, init_db
+import random
+from typing import Any
 
-logging.basicConfig(level=logging.INFO)
+from sqlalchemy import inspect
+from sqlalchemy.orm import Session
+
+from logistics_tower.config import settings
+from logistics_tower.db.address_pool import REGIONAL_CUSTOMERS_POOL
+from logistics_tower.db.models import Base, Customer, CustomerRule, Order, Vehicle
+from logistics_tower.db.order_factory import build_orders
+from logistics_tower.db.session import SessionLocal, engine, init_db
+
 logger = logging.getLogger(__name__)
 
-FLEET_SEED_DATA = [
+SEED_ORDER_COUNT = 40
+SEED_RNG = 2026
+SEED_ORDER_PREFIX = "2026"
+
+# Five refrigerated trucks (cold chain: 0-4 °C chilled / -18 °C frozen)
+FLEET_SEED_DATA: list[dict[str, Any]] = [
     {
         "vehicle_id": "VEH-ITJ-VUC-01",
         "plate": "RLS7B14",
-        "model": "Iveco Daily 35S14 Baú Seco (VUC)",
+        "model": "Iveco Daily 35S14 Baú Frigorífico (VUC)",
         "vehicle_type": "VUC",
         "max_weight_kg": 1600.0,
         "max_volume_m3": 11.0,
-        "has_refrigeration": False,
+        "has_refrigeration": True,
         "driver_name": "Carlos Eduardo da Silva",
         "driver_phone": "(47) 99123-4567",
         "current_status": "AVAILABLE",
-        "home_cd_id": "CD-ITAJAI-SC01",
+        "home_cd_id": settings.default_cd_id,
     },
     {
-        "vehicle_id": "VEH-ITJ-REF-02",
-        "plate": "MKF9C32",
-        "model": "Hyundai HR Refrigerado Termo King (VUC)",
+        "vehicle_id": "VEH-ITJ-VUC-02",
+        "plate": "MKB2D55",
+        "model": "Mercedes-Benz Accelo 815 Baú Frigorífico (VUC)",
         "vehicle_type": "VUC",
-        "max_weight_kg": 1500.0,
-        "max_volume_m3": 9.5,
+        "max_weight_kg": 2800.0,
+        "max_volume_m3": 18.0,
         "has_refrigeration": True,
-        "driver_name": "Marcos Vinicius Santos",
-        "driver_phone": "(47) 99234-5678",
+        "driver_name": "Lucas Pereira de Souza",
+        "driver_phone": "(47) 99456-7890",
         "current_status": "AVAILABLE",
-        "home_cd_id": "CD-ITAJAI-SC01",
+        "home_cd_id": settings.default_cd_id,
     },
     {
         "vehicle_id": "VEH-ITJ-TOCO-03",
         "plate": "QJQ4E88",
-        "model": "Mercedes-Benz Atego 1419 Baú (Toco)",
+        "model": "Mercedes-Benz Atego 1419 Baú Frigorífico (Toco)",
         "vehicle_type": "TOCO",
         "max_weight_kg": 6000.0,
         "max_volume_m3": 32.0,
-        "has_refrigeration": False,
+        "has_refrigeration": True,
         "driver_name": "Roberto Almeida",
         "driver_phone": "(47) 99345-6789",
         "current_status": "AVAILABLE",
-        "home_cd_id": "CD-ITAJAI-SC01",
+        "home_cd_id": settings.default_cd_id,
     },
     {
-        "vehicle_id": "VEH-ITJ-VUC-04",
-        "plate": "MKB2D55",
-        "model": "Mercedes-Benz Accelo 815 Baú Seco (VUC)",
-        "vehicle_type": "VUC",
-        "max_weight_kg": 2800.0,
-        "max_volume_m3": 18.0,
-        "has_refrigeration": False,
-        "driver_name": "Lucas Pereira de Souza",
-        "driver_phone": "(47) 99456-7890",
-        "current_status": "AVAILABLE",
-        "home_cd_id": "CD-ITAJAI-SC01",
-    },
-    {
-        "vehicle_id": "VEH-ITJ-REF-05",
-        "plate": "RLU3F90",
-        "model": "Iveco Daily 55C17 Refrigerado (VUC)",
-        "vehicle_type": "VUC",
-        "max_weight_kg": 2400.0,
-        "max_volume_m3": 14.5,
-        "has_refrigeration": True,
-        "driver_name": "Fernando Henrique Ramos",
-        "driver_phone": "(47) 99567-8901",
-        "current_status": "AVAILABLE",
-        "home_cd_id": "CD-ITAJAI-SC01",
-    },
-    {
-        "vehicle_id": "VEH-ITJ-TOCO-06",
+        "vehicle_id": "VEH-ITJ-TOCO-04",
         "plate": "QHP1G44",
-        "model": "Volkswagen Delivery 11.180 Baú (Toco)",
+        "model": "Volkswagen Delivery 11.180 Baú Frigorífico (Toco)",
         "vehicle_type": "TOCO",
         "max_weight_kg": 5500.0,
         "max_volume_m3": 28.0,
-        "has_refrigeration": False,
+        "has_refrigeration": True,
         "driver_name": "André Luiz Martins",
         "driver_phone": "(47) 99678-9012",
         "current_status": "AVAILABLE",
-        "home_cd_id": "CD-ITAJAI-SC01",
+        "home_cd_id": settings.default_cd_id,
     },
     {
-        "vehicle_id": "VEH-ITJ-TRUCK-07",
+        "vehicle_id": "VEH-ITJ-TRUCK-05",
         "plate": "MMI8H12",
-        "model": "Volvo VM 270 Baú 6x2 (Truck)",
+        "model": "Volvo VM 270 Baú Frigorífico 6x2 (Truck)",
         "vehicle_type": "TRUCK",
         "max_weight_kg": 13000.0,
         "max_volume_m3": 55.0,
-        "has_refrigeration": False,
+        "has_refrigeration": True,
         "driver_name": "João Paulo Bittencourt",
         "driver_phone": "(47) 99789-0123",
         "current_status": "AVAILABLE",
-        "home_cd_id": "CD-ITAJAI-SC01",
-    },
-    {
-        "vehicle_id": "VEH-ITJ-REF-08",
-        "plate": "RDI5J77",
-        "model": "Mercedes-Benz Atego 1719 Refrigerado",
-        "vehicle_type": "TOCO",
-        "max_weight_kg": 8500.0,
-        "max_volume_m3": 42.0,
-        "has_refrigeration": True,
-        "driver_name": "Daniel Costa Fagundes",
-        "driver_phone": "(47) 99890-1234",
-        "current_status": "AVAILABLE",
-        "home_cd_id": "CD-ITAJAI-SC01",
+        "home_cd_id": settings.default_cd_id,
     },
 ]
 
 
-def seed_database():
-    """Initializes schema and populates real database records."""
+def ensure_schema() -> None:
+    """
+    Create tables; if an existing table lacks a column defined in the models
+    (schema evolved), rebuild the local database. There is no Alembic yet (ADR-0005),
+    and the database is a regenerable cache of the seed data.
+    """
     init_db()
-    db = SessionLocal()
-
-    try:
-        # Check if fleet needs expansion to 8 vehicles
-        if db.query(Vehicle).count() < 8:
-            logger.info("Updating fleet to 8 vehicles in database...")
-            existing_ids = {v.vehicle_id for v in db.query(Vehicle).all()}
-            for v_data in FLEET_SEED_DATA:
-                if v_data["vehicle_id"] not in existing_ids:
-                    db.add(Vehicle(**v_data))
-            db.commit()
-            logger.info("Fleet successfully updated to 8 vehicles.")
-
-        if db.query(Customer).count() > 0:
-            logger.info("Database already contains customer data. Skipping customer seed.")
+    inspector = inspect(engine)
+    for table in Base.metadata.sorted_tables:
+        if not inspector.has_table(table.name):
+            continue
+        existing = {c["name"] for c in inspector.get_columns(table.name)}
+        missing = {c.name for c in table.columns} - existing
+        if missing:
+            logger.warning("Schema drift on table '%s' (missing %s); rebuilding database.", table.name, sorted(missing))
+            Base.metadata.drop_all(bind=engine)
+            Base.metadata.create_all(bind=engine)
             return
 
-        logger.info("Seeding customers in Itajaí - SC and surrounding hubs...")
 
-        customers_data = [
-            {
-                "code": "CUST-ITJ-001",
-                "name": "Supermercado Bistek - Fazenda",
-                "document_cnpj": "83.261.411/0001-92",
-                "address": "Rua Sete de Setembro, 1200",
-                "neighborhood": "Fazenda",
-                "city": "Itajaí",
-                "state": "SC",
-                "zip_code": "88301-202",
-                "lat": -26.9185,
-                "lng": -48.6492,
-                "contact_phone": "(47) 3348-1000",
-                "dock_type": "RAMPA_ESTREITA",
-                "max_vehicle_allowed": "VUC",
-                "rules": [
-                    {
-                        "category": "ACCESS_RESTRICTION",
-                        "content": "Rua residencial e rampa de doca estreita no bairro Fazenda. Apenas veículos VUC autorizados. Proibido caminhão Truck.",
-                        "priority": "CRITICAL",
-                    }
-                ],
-            },
-            {
-                "code": "CUST-ITJ-002",
-                "name": "Komprão Koch Atacadista - Cordeiros",
-                "document_cnpj": "02.831.356/0014-50",
-                "address": "Av. Reinaldo Schmithausen, 1850",
-                "neighborhood": "Cordeiros",
-                "city": "Itajaí",
-                "state": "SC",
-                "zip_code": "88310-001",
-                "lat": -26.8820,
-                "lng": -48.6875,
-                "contact_phone": "(47) 3249-5500",
-                "dock_type": "ELEVADA",
-                "max_vehicle_allowed": "TOCO",
-                "rules": [
-                    {
-                        "category": "DOCK_WINDOW",
-                        "content": "Fila severa de carretas na Av. Reinaldo Schmithausen após 09:00. Priorizar descarga entre 06:00 e 08:30.",
-                        "priority": "HIGH",
-                    }
-                ],
-            },
-            {
-                "code": "CUST-ITJ-003",
-                "name": "Pescados & Frigorífico Costa Sul - Porto",
-                "document_cnpj": "04.112.980/0001-33",
-                "address": "Rua Pedro Ferreira, 350",
-                "neighborhood": "Centro / Porto",
-                "city": "Itajaí",
-                "state": "SC",
-                "zip_code": "88301-030",
-                "lat": -26.9070,
-                "lng": -48.6540,
-                "contact_phone": "(47) 3341-8200",
-                "dock_type": "DOCA_FRIGORIFICADA",
-                "max_vehicle_allowed": "VUC",
-                "rules": [
-                    {
-                        "category": "COLD_CHAIN",
-                        "content": "Exige controle estrito de cadeia de frio. Conferência de temperatura obrigatória antes do descarregamento na doca portuária.",
-                        "priority": "CRITICAL",
-                    }
-                ],
-            },
-            {
-                "code": "CUST-BC-004",
-                "name": "Angeloni Supermercados - Quarta Avenida",
-                "document_cnpj": "83.646.984/0022-18",
-                "address": "Quarta Avenida, 880",
-                "neighborhood": "Centro",
-                "city": "Balneário Camboriú",
-                "state": "SC",
-                "zip_code": "88330-110",
-                "lat": -26.9910,
-                "lng": -48.6360,
-                "contact_phone": "(47) 3263-4000",
-                "dock_type": "SUBSOLO_LIMITADO",
-                "max_vehicle_allowed": "VUC",
-                "rules": [
-                    {
-                        "category": "TIME_WINDOW_TRAFFIC",
-                        "content": "Trânsito de entrada em Balneário Camboriú complica após 08:30 pela BR-101. Agendar primeira parada da manhã.",
-                        "priority": "HIGH",
-                    }
-                ],
-            },
-            {
-                "code": "CUST-ITJ-005",
-                "name": "Farmácia Preço Popular - São Vicente",
-                "document_cnpj": "84.307.848/0055-60",
-                "address": "Rua Estefano José Vanolli, 920",
-                "neighborhood": "São Vicente",
-                "city": "Itajaí",
-                "state": "SC",
-                "zip_code": "88309-000",
-                "lat": -26.9045,
-                "lng": -48.6935,
-                "contact_phone": "(47) 3346-7788",
-                "dock_type": "NIVEL_SOLO",
-                "max_vehicle_allowed": "VUC",
-                "rules": [],
-            },
-            {
-                "code": "CUST-ITJ-006",
-                "name": "Armazém & Adega Brava Beach",
-                "document_cnpj": "31.450.890/0001-12",
-                "address": "Av. José Medeiros Vieira, 1400",
-                "neighborhood": "Praia Brava",
-                "city": "Itajaí",
-                "state": "SC",
-                "zip_code": "88306-800",
-                "lat": -26.9530,
-                "lng": -48.6280,
-                "contact_phone": "(47) 3344-9900",
-                "dock_type": "LATERAL_SERVICO",
-                "max_vehicle_allowed": "VUC",
-                "rules": [
-                    {
-                        "category": "SECURITY_AND_RESTRICTION",
-                        "content": "Av. da praia tem restrição diurna para caminhões pesados. Apenas VUC autorizado. Carga de alto valor (vinhos e destilados finos).",
-                        "priority": "CRITICAL",
-                    }
-                ],
-            },
-            {
-                "code": "CUST-ITJ-007",
-                "name": "Fort Atacadista - Ressacada",
-                "document_cnpj": "09.477.652/0038-70",
-                "address": "Rua Tijucas, 1050",
-                "neighborhood": "Ressacada",
-                "city": "Itajaí",
-                "state": "SC",
-                "zip_code": "88307-300",
-                "lat": -26.9160,
-                "lng": -48.6780,
-                "contact_phone": "(47) 3349-2233",
-                "dock_type": "ELEVADA",
-                "max_vehicle_allowed": "TOCO",
-                "rules": [],
-            },
-            {
-                "code": "CUST-NAV-008",
-                "name": "Supermercado Koch - Navegantes Centro",
-                "document_cnpj": "02.831.356/0008-01",
-                "address": "Av. Prefeito Cirino Adolfo Cabral, 450",
-                "neighborhood": "Centro",
-                "city": "Navegantes",
-                "state": "SC",
-                "zip_code": "88370-000",
-                "lat": -26.8920,
-                "lng": -48.6510,
-                "contact_phone": "(47) 3342-1200",
-                "dock_type": "NIVEL_SOLO",
-                "max_vehicle_allowed": "TOCO",
-                "rules": [],
-            },
-        ]
+def _sync_fleet(db: Session) -> None:
+    target_ids = {v["vehicle_id"] for v in FLEET_SEED_DATA}
+    for v in db.query(Vehicle).all():
+        if v.vehicle_id not in target_ids:
+            logger.info("Removing vehicle %s (not part of the configured fleet)", v.vehicle_id)
+            db.delete(v)
+    db.flush()
+    for v_data in FLEET_SEED_DATA:
+        veh = db.query(Vehicle).filter(Vehicle.vehicle_id == v_data["vehicle_id"]).first()
+        if veh is None:
+            db.add(Vehicle(**v_data))
+        else:
+            for key, val in v_data.items():
+                setattr(veh, key, val)
+    db.commit()
 
-        cust_obj_map = {}
-        for c in customers_data:
-            rules_data = c.pop("rules")
-            cust = Customer(**c)
+
+def sync_customers(db: Session) -> None:
+    """Insert missing pool customers (with rules) and refresh geo/dock metadata of existing ones."""
+    existing = {c.code: c for c in db.query(Customer).all()}
+    for pool_cust in REGIONAL_CUSTOMERS_POOL:
+        data = dict(pool_cust)
+        rules_data = data.pop("rules", [])
+        cust = existing.get(data["code"])
+        if cust is None:
+            cust = Customer(**data)
             db.add(cust)
             db.flush()
-            cust_obj_map[cust.code] = cust
-
             for r in rules_data:
-                rule = CustomerRule(
-                    customer_id=cust.id,
-                    rule_category=r["category"],
-                    content=r["content"],
-                    priority=r["priority"],
+                db.add(
+                    CustomerRule(
+                        customer_id=cust.id,
+                        rule_category=r["category"],
+                        content=r["content"],
+                        priority=r.get("priority", "HIGH"),
+                    )
                 )
-                db.add(rule)
+        else:
+            for key in ("segment", "dock_type", "max_vehicle_allowed", "lat", "lng"):
+                setattr(cust, key, data[key])
+    db.commit()
 
-        for v in FLEET_SEED_DATA:
-            db.add(Vehicle(**v))
 
-        logger.info("Seeding pending delivery orders for today...")
-        orders_data = [
-            {
-                "order_number": "ORD-ITJ-2026-001",
-                "customer_code": "CUST-ITJ-001",
-                "cd_id": "CD-ITAJAI-SC01",
-                "weight_kg": 720.0,
-                "volume_m3": 3.2,
-                "cargo_type": "dry",
-                "window_start": "07:30",
-                "window_end": "11:00",
-                "priority": "VIP",
-                "value_brl": 22400.0,
-            },
-            {
-                "order_number": "ORD-ITJ-2026-002",
-                "customer_code": "CUST-ITJ-002",
-                "cd_id": "CD-ITAJAI-SC01",
-                "weight_kg": 2800.0,
-                "volume_m3": 9.4,
-                "cargo_type": "dry",
-                "window_start": "06:00",
-                "window_end": "09:30",
-                "priority": "STANDARD",
-                "value_brl": 41500.0,
-            },
-            {
-                "order_number": "ORD-ITJ-2026-003",
-                "customer_code": "CUST-ITJ-003",
-                "cd_id": "CD-ITAJAI-SC01",
-                "weight_kg": 850.0,
-                "volume_m3": 3.8,
-                "cargo_type": "refrigerated",
-                "window_start": "08:00",
-                "window_end": "11:30",
-                "priority": "VIP",
-                "value_brl": 38900.0,
-            },
-            {
-                "order_number": "ORD-ITJ-2026-004",
-                "customer_code": "CUST-BC-004",
-                "cd_id": "CD-ITAJAI-SC01",
-                "weight_kg": 610.0,
-                "volume_m3": 2.6,
-                "cargo_type": "refrigerated",
-                "window_start": "07:00",
-                "window_end": "10:30",
-                "priority": "VIP",
-                "value_brl": 29800.0,
-            },
-            {
-                "order_number": "ORD-ITJ-2026-005",
-                "customer_code": "CUST-ITJ-005",
-                "cd_id": "CD-ITAJAI-SC01",
-                "weight_kg": 340.0,
-                "volume_m3": 1.4,
-                "cargo_type": "refrigerated",
-                "window_start": "09:00",
-                "window_end": "13:30",
-                "priority": "STANDARD",
-                "value_brl": 19200.0,
-            },
-            {
-                "order_number": "ORD-ITJ-2026-006",
-                "customer_code": "CUST-ITJ-006",
-                "cd_id": "CD-ITAJAI-SC01",
-                "weight_kg": 540.0,
-                "volume_m3": 2.1,
-                "cargo_type": "dry",
-                "window_start": "13:00",
-                "window_end": "16:30",
-                "priority": "HIGH_RISK_LOAD",
-                "value_brl": 86000.0,
-            },
-            {
-                "order_number": "ORD-ITJ-2026-007",
-                "customer_code": "CUST-ITJ-007",
-                "cd_id": "CD-ITAJAI-SC01",
-                "weight_kg": 1950.0,
-                "volume_m3": 7.0,
-                "cargo_type": "dry",
-                "window_start": "08:30",
-                "window_end": "14:00",
-                "priority": "STANDARD",
-                "value_brl": 35200.0,
-            },
-        ]
+def _orders_need_reseed(db: Session, force: bool) -> bool:
+    if force:
+        return True
+    pending = db.query(Order).filter(Order.status == "PENDING").count()
+    non_refrigerated = db.query(Order).filter(Order.cargo_type != "refrigerated").count()
+    return pending == 0 or non_refrigerated > 0
 
-        for o in orders_data:
-            c_code = o.pop("customer_code")
-            cust_id = cust_obj_map[c_code].id
-            order = Order(customer_id=cust_id, status="PENDING", **o)
-            db.add(order)
 
-        db.commit()
-        logger.info(f"Database successfully seeded with {len(customers_data)} customers, {len(FLEET_SEED_DATA)} vehicles, and {len(orders_data)} orders!")
-    except Exception as e:
+def _seed_orders(db: Session, cd_id: str) -> int:
+    db.query(Order).delete()
+    db.commit()
+    customers = [
+        {"id": c.id, "segment": c.segment, "name": c.name} for c in db.query(Customer).order_by(Customer.code).all()
+    ]
+    rng = random.Random(SEED_RNG)
+    orders = build_orders(customers, SEED_ORDER_COUNT, rng, cd_id=cd_id, prefix=SEED_ORDER_PREFIX)
+    for o in orders:
+        db.add(Order(**o))
+    db.commit()
+    return len(orders)
+
+
+def seed_database(force_reseed: bool = False) -> None:
+    """Converge schema, fleet, customers and (when needed) the pending order set."""
+    ensure_schema()
+    db = SessionLocal()
+    try:
+        _sync_fleet(db)
+        sync_customers(db)
+        if _orders_need_reseed(db, force_reseed):
+            count = _seed_orders(db, settings.default_cd_id)
+            total_cust = db.query(Customer).count()
+            logger.info(
+                "Database seeded: %s customers, %s refrigerated trucks, %s pending orders.",
+                total_cust,
+                len(FLEET_SEED_DATA),
+                count,
+            )
+    except Exception:
         db.rollback()
-        logger.error(f"Failed to seed database: {e}")
-        raise e
+        logger.exception("Failed to seed database")
+        raise
     finally:
         db.close()
 
 
+def main() -> None:
+    """Console entry point: `logistics-tower-seed` / `python -m logistics_tower.db.seed`."""
+    from logistics_tower.logging_setup import configure_logging
+
+    configure_logging()
+    seed_database(force_reseed=True)
+
+
 if __name__ == "__main__":
-    seed_database()
+    main()

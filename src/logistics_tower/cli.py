@@ -5,30 +5,30 @@ and prompts the human dispatcher when the HITL gate triggers an interrupt.
 """
 
 import sys
-from typing import Any, Dict
+from typing import Any
 
 from langgraph.types import Command
-from rich import print
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
 from logistics_tower.config import settings
+from logistics_tower.db.seed import seed_database
 from logistics_tower.graph import build_logistics_graph
+from logistics_tower.logging_setup import configure_logging
 from logistics_tower.memory.short_term import get_session_checkpointer
 
 # Ensure UTF-8 output on Windows terminals
 if sys.platform == "win32":
-    try:
-        sys.stdout.reconfigure(encoding="utf-8")
-        sys.stderr.reconfigure(encoding="utf-8")
-    except Exception:
-        pass
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            reconfigure(encoding="utf-8")
 
 console = Console(force_terminal=True)
 
 
-def render_dispatch_dashboard(state_values: Dict[str, Any]):
+def render_dispatch_dashboard(state_values: dict[str, Any]):
     """Renders formatted operational dispatch tables in terminal."""
     console.print()
     console.print(
@@ -51,18 +51,26 @@ def render_dispatch_dashboard(state_values: Dict[str, Any]):
         table_loads.add_column("Cubagem Ocupada", justify="right")
         table_loads.add_column("Qtd Pedidos", justify="center")
 
-        for l in loads:
-            w_color = "green" if l["weight_utilization_pct"] < 85 else ("yellow" if l["weight_utilization_pct"] <= 90 else "bold red")
-            v_color = "green" if l["volume_utilization_pct"] < 85 else ("yellow" if l["volume_utilization_pct"] <= 90 else "bold red")
-            ref_tag = " [cyan]❄️ (Ref)[/cyan]" if l.get("has_refrigeration") else ""
+        for load in loads:
+            w_color = (
+                "green"
+                if load["weight_utilization_pct"] < 85
+                else ("yellow" if load["weight_utilization_pct"] <= 90 else "bold red")
+            )
+            v_color = (
+                "green"
+                if load["volume_utilization_pct"] < 85
+                else ("yellow" if load["volume_utilization_pct"] <= 90 else "bold red")
+            )
+            ref_tag = " [cyan]❄️ (Ref)[/cyan]" if load.get("has_refrigeration") else ""
 
             table_loads.add_row(
-                f"{l['vehicle_id']}{ref_tag}",
-                l.get("vehicle_model", "N/A"),
-                l.get("driver_name", "N/A"),
-                f"[{w_color}]{l['total_weight_kg']} kg ({l['weight_utilization_pct']}%)[/{w_color}]",
-                f"[{v_color}]{l['total_volume_m3']} m³ ({l['volume_utilization_pct']}%)[/{v_color}]",
-                str(len(l.get("orders", []))),
+                f"{load['vehicle_id']}{ref_tag}",
+                load.get("vehicle_model", "N/A"),
+                load.get("driver_name", "N/A"),
+                f"[{w_color}]{load['total_weight_kg']} kg ({load['weight_utilization_pct']}%)[/{w_color}]",
+                f"[{v_color}]{load['total_volume_m3']} m³ ({load['volume_utilization_pct']}%)[/{v_color}]",
+                str(len(load.get("orders", []))),
             )
         console.print(table_loads)
 
@@ -70,7 +78,9 @@ def render_dispatch_dashboard(state_values: Dict[str, Any]):
     routes = state_values.get("routes", [])
     if routes:
         console.print()
-        table_routes = Table(title="🗺️ Rotas Otimizadas & Sequência de Entregas (Itajaí / Região)", border_style="magenta")
+        table_routes = Table(
+            title="🗺️ Rotas Otimizadas & Sequência de Entregas (Itajaí / Região)", border_style="magenta"
+        )
         table_routes.add_column("Veículo", style="bold white")
         table_routes.add_column("Seq", justify="center")
         table_routes.add_column("Cliente / Destino", style="cyan")
@@ -115,6 +125,8 @@ def render_dispatch_dashboard(state_values: Dict[str, Any]):
 
 def main():
     """CLI execution entrypoint."""
+    configure_logging(level="WARNING")
+    seed_database()
     console.print("[dim]Iniciando o Squad de Agentes da Torre de Controle Logístico...[/dim]")
 
     checkpointer = get_session_checkpointer()
@@ -151,7 +163,13 @@ def main():
             )
         )
 
-        choice = console.input("\n[bold white]Decisão do Despachante ([green]A[/green]provar / [red]R[/red]ejeitar): [/bold white]").strip().upper()
+        choice = (
+            console.input(
+                "\n[bold white]Decisão do Despachante ([green]A[/green]provar / [red]R[/red]ejeitar): [/bold white]"
+            )
+            .strip()
+            .upper()
+        )
         verdict = "APPROVED" if choice in ["A", "APROVAR", "YES", "Y"] else "REJECTED"
         feedback = console.input("[dim]Observação do operador (opcional): [/dim]").strip()
 
@@ -175,7 +193,9 @@ def main():
                 )
             )
         else:
-            console.print(Panel.fit("[bold red]❌ DESPACHO CANCELADO PELO OPERADOR HUMANO[/bold red]", border_style="red"))
+            console.print(
+                Panel.fit("[bold red]❌ DESPACHO CANCELADO PELO OPERADOR HUMANO[/bold red]", border_style="red")
+            )
     else:
         manifest = curr_state.values.get("dispatch_manifest")
         if manifest:

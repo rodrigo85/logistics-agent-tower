@@ -4,7 +4,6 @@ Exposes logistics tools and operational resources to autonomous agents using MCP
 """
 
 import json
-from typing import Any, Dict, List
 
 from mcp.server.mcpserver import MCPServer
 
@@ -43,7 +42,7 @@ def get_customer_dock_rules(customer_name: str) -> str:
 
 
 @mcp_server.tool()
-def optimize_vehicle_route(orders_json: str, start_time: str = "07:00") -> str:
+def optimize_vehicle_route(orders_json: str, start_time: str = settings.dock_start_time) -> str:
     """Computes the optimized sequence of stops, total distance (km), and arrival ETA for a vehicle."""
     try:
         orders = json.loads(orders_json)
@@ -93,6 +92,11 @@ def get_fleet_summary() -> str:
 
 def run_mcp_server():
     """Runs the MCP server using standard I/O transport."""
+    from logistics_tower.db.seed import seed_database
+    from logistics_tower.logging_setup import configure_logging
+
+    configure_logging()
+    seed_database()
     mcp_server.run()
 
 

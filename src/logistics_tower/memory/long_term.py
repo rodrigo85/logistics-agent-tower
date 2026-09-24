@@ -5,10 +5,9 @@ and historical logistical idiosyncrasies across dispatch sessions in the SQL dat
 """
 
 import logging
-from typing import Any, Dict, List
+from typing import Any
 
 from logistics_tower.db.repository import get_repository
-from logistics_tower.db.seed import seed_database
 
 logger = logging.getLogger(__name__)
 
@@ -20,19 +19,18 @@ class CustomerMemoryStore:
     """
 
     def __init__(self):
-        seed_database()
         self.repo = get_repository()
 
     def add_rule(self, customer_name: str, rule_category: str, content: str, priority: str = "HIGH") -> None:
         self.repo.add_customer_rule(customer_name, rule_category, content, priority)
         logger.info(f"Memory: Persisted new rule for {customer_name} into SQL database.")
 
-    def get_rules_for_customer(self, customer_name: str) -> List[Dict[str, Any]]:
+    def get_rules_for_customer(self, customer_name: str) -> list[dict[str, Any]]:
         all_rules = self.repo.get_all_customer_rules()
         target = customer_name.strip().lower()
         return [r for r in all_rules if target in r["customer_name"].lower()]
 
-    def search_rules(self, query: str) -> List[Dict[str, Any]]:
+    def search_rules(self, query: str) -> list[dict[str, Any]]:
         tokens = query.lower().split()
         all_rules = self.repo.get_all_customer_rules()
         results = []
@@ -42,7 +40,7 @@ class CustomerMemoryStore:
                 results.append(r)
         return results
 
-    def get_all_rules(self) -> List[Dict[str, Any]]:
+    def get_all_rules(self) -> list[dict[str, Any]]:
         return self.repo.get_all_customer_rules()
 
 

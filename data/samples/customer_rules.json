@@ -1,32 +1,310 @@
 [
   {
+    "customer_code": "CUST-ITJ-001",
     "customer_name": "Supermercado Bistek - Fazenda",
     "rule_category": "ACCESS_RESTRICTION",
-    "content": "Rua residencial e rampa de doca estreita no bairro Fazenda. Apenas veículos de porte VUC autorizados. Proibido caminhão Truck.",
+    "content": "Rua estreita e sem doca. Apenas veículos VUC autorizados; proibido Toco e Truck.",
     "effective_priority": "CRITICAL"
   },
   {
+    "customer_code": "CUST-ITJ-001",
+    "customer_name": "Supermercado Bistek - Fazenda",
+    "rule_category": "COLD_CHAIN",
+    "content": "Conferência de temperatura obrigatória na doca (resfriados 0-4 °C, congelados -18 °C). Registro no canhoto.",
+    "effective_priority": "HIGH"
+  },
+  {
+    "customer_code": "CUST-ITJ-002",
     "customer_name": "Komprão Koch Atacadista - Cordeiros",
     "rule_category": "DOCK_WINDOW",
-    "content": "Congestionamento intenso de carretas na Av. Reinaldo Schmithausen após 09:00. Priorizar descarga entre 06:00 e 08:30.",
+    "content": "Doca de refrigerados opera apenas no período da manhã (até 12:00).",
     "effective_priority": "HIGH"
   },
   {
-    "customer_name": "Frigorífico & Pescados Costa Sul - Porto",
+    "customer_code": "CUST-ITJ-002",
+    "customer_name": "Komprão Koch Atacadista - Cordeiros",
     "rule_category": "COLD_CHAIN",
-    "content": "Exige controle estrito de cadeia de frio. Conferência de temperatura obrigatória antes do descarregamento na doca portuária.",
+    "content": "Conferência de temperatura obrigatória na doca (resfriados 0-4 °C, congelados -18 °C). Registro no canhoto.",
+    "effective_priority": "HIGH"
+  },
+  {
+    "customer_code": "CUST-ITJ-003",
+    "customer_name": "Angeloni Supermercados - Centro",
+    "rule_category": "COLD_CHAIN",
+    "content": "Conferência de temperatura obrigatória na doca (resfriados 0-4 °C, congelados -18 °C). Registro no canhoto.",
+    "effective_priority": "HIGH"
+  },
+  {
+    "customer_code": "CUST-ITJ-005",
+    "customer_name": "Mercearia São Vicente",
+    "rule_category": "ACCESS_RESTRICTION",
+    "content": "Rua estreita e sem doca. Apenas veículos VUC autorizados; proibido Toco e Truck.",
     "effective_priority": "CRITICAL"
   },
   {
-    "customer_name": "Angeloni Supermercados - Quarta Avenida",
-    "rule_category": "TIME_WINDOW_TRAFFIC",
-    "content": "Trânsito de entrada em Balneário Camboriú complica após 08:30 pela BR-101. Agendar primeira parada da manhã.",
+    "customer_code": "CUST-ITJ-007",
+    "customer_name": "Padaria & Confeitaria Praia Brava",
+    "rule_category": "DOCK_WINDOW",
+    "content": "Recebimento de perecíveis somente antes da abertura da loja (até 09:00).",
     "effective_priority": "HIGH"
   },
   {
-    "customer_name": "Armazém & Adega Brava Beach",
-    "rule_category": "SECURITY_AND_RESTRICTION",
-    "content": "Av. da praia tem restrição diurna para caminhões pesados (Decreto Municipal). Apenas VUC permitido. Carga de alto valor (vinhos finos).",
+    "customer_code": "CUST-ITJ-007",
+    "customer_name": "Padaria & Confeitaria Praia Brava",
+    "rule_category": "ACCESS_RESTRICTION",
+    "content": "Rua estreita e sem doca. Apenas veículos VUC autorizados; proibido Toco e Truck.",
+    "effective_priority": "CRITICAL"
+  },
+  {
+    "customer_code": "CUST-ITJ-008",
+    "customer_name": "Açougue & Frios Vila Operária",
+    "rule_category": "COLD_CHAIN",
+    "content": "Conferência de temperatura obrigatória na doca (resfriados 0-4 °C, congelados -18 °C). Registro no canhoto.",
+    "effective_priority": "HIGH"
+  },
+  {
+    "customer_code": "CUST-ITJ-011",
+    "customer_name": "Mercado Público de Itajaí - Boxes de Pescados",
+    "rule_category": "ACCESS_RESTRICTION",
+    "content": "Rua estreita e sem doca. Apenas veículos VUC autorizados; proibido Toco e Truck.",
+    "effective_priority": "CRITICAL"
+  },
+  {
+    "customer_code": "CUST-ITJ-011",
+    "customer_name": "Mercado Público de Itajaí - Boxes de Pescados",
+    "rule_category": "COLD_CHAIN",
+    "content": "Conferência de temperatura obrigatória na doca (resfriados 0-4 °C, congelados -18 °C). Registro no canhoto.",
+    "effective_priority": "HIGH"
+  },
+  {
+    "customer_code": "CUST-ITJ-013",
+    "customer_name": "Supermercado Imperatriz - Cordeiros",
+    "rule_category": "COLD_CHAIN",
+    "content": "Conferência de temperatura obrigatória na doca (resfriados 0-4 °C, congelados -18 °C). Registro no canhoto.",
+    "effective_priority": "HIGH"
+  },
+  {
+    "customer_code": "CUST-ITJ-014",
+    "customer_name": "Minimercado Bom Preço - Barra do Rio",
+    "rule_category": "ACCESS_RESTRICTION",
+    "content": "Rua estreita e sem doca. Apenas veículos VUC autorizados; proibido Toco e Truck.",
+    "effective_priority": "CRITICAL"
+  },
+  {
+    "customer_code": "CUST-ITJ-015",
+    "customer_name": "Conveniência Posto Marcos Konder",
+    "rule_category": "ACCESS_RESTRICTION",
+    "content": "Sem doca: descarga rápida na calçada, máximo 15 minutos de parada.",
+    "effective_priority": "HIGH"
+  },
+  {
+    "customer_code": "CUST-ITJ-016",
+    "customer_name": "Casa de Carnes Cordeiros",
+    "rule_category": "COLD_CHAIN",
+    "content": "Conferência de temperatura obrigatória na doca (resfriados 0-4 °C, congelados -18 °C). Registro no canhoto.",
+    "effective_priority": "HIGH"
+  },
+  {
+    "customer_code": "CUST-ITJ-018",
+    "customer_name": "Sorveteria & Gelados Cabeçudas",
+    "rule_category": "ACCESS_RESTRICTION",
+    "content": "Rua estreita e sem doca. Apenas veículos VUC autorizados; proibido Toco e Truck.",
+    "effective_priority": "CRITICAL"
+  },
+  {
+    "customer_code": "CUST-ITJ-018",
+    "customer_name": "Sorveteria & Gelados Cabeçudas",
+    "rule_category": "COLD_CHAIN",
+    "content": "Conferência de temperatura obrigatória na doca (resfriados 0-4 °C, congelados -18 °C). Registro no canhoto.",
+    "effective_priority": "HIGH"
+  },
+  {
+    "customer_code": "CUST-ITJ-020",
+    "customer_name": "Casa de Carnes & Frios Ressacada",
+    "rule_category": "ACCESS_RESTRICTION",
+    "content": "Rua estreita e sem doca. Apenas veículos VUC autorizados; proibido Toco e Truck.",
+    "effective_priority": "CRITICAL"
+  },
+  {
+    "customer_code": "CUST-BC-001",
+    "customer_name": "Angeloni Supermercados - Quarta Avenida",
+    "rule_category": "DOCK_WINDOW",
+    "content": "Doca de refrigerados opera apenas no período da manhã (até 12:00).",
+    "effective_priority": "HIGH"
+  },
+  {
+    "customer_code": "CUST-BC-004",
+    "customer_name": "Mercearia Pioneiros",
+    "rule_category": "ACCESS_RESTRICTION",
+    "content": "Rua estreita e sem doca. Apenas veículos VUC autorizados; proibido Toco e Truck.",
+    "effective_priority": "CRITICAL"
+  },
+  {
+    "customer_code": "CUST-BC-005",
+    "customer_name": "Minimercado Barra Sul",
+    "rule_category": "ACCESS_RESTRICTION",
+    "content": "Rua estreita e sem doca. Apenas veículos VUC autorizados; proibido Toco e Truck.",
+    "effective_priority": "CRITICAL"
+  },
+  {
+    "customer_code": "CUST-BC-006",
+    "customer_name": "Padaria & Lanches Avenida Brasil",
+    "rule_category": "DOCK_WINDOW",
+    "content": "Recebimento de perecíveis somente antes da abertura da loja (até 09:00).",
+    "effective_priority": "HIGH"
+  },
+  {
+    "customer_code": "CUST-BC-006",
+    "customer_name": "Padaria & Lanches Avenida Brasil",
+    "rule_category": "ACCESS_RESTRICTION",
+    "content": "Rua estreita e sem doca. Apenas veículos VUC autorizados; proibido Toco e Truck.",
+    "effective_priority": "CRITICAL"
+  },
+  {
+    "customer_code": "CUST-BC-007",
+    "customer_name": "Açougue & Frios Municípios",
+    "rule_category": "COLD_CHAIN",
+    "content": "Conferência de temperatura obrigatória na doca (resfriados 0-4 °C, congelados -18 °C). Registro no canhoto.",
+    "effective_priority": "HIGH"
+  },
+  {
+    "customer_code": "CUST-BC-009",
+    "customer_name": "Conveniência Praia Central",
+    "rule_category": "ACCESS_RESTRICTION",
+    "content": "Sem doca: descarga rápida na calçada, máximo 15 minutos de parada.",
+    "effective_priority": "HIGH"
+  },
+  {
+    "customer_code": "CUST-BC-009",
+    "customer_name": "Conveniência Praia Central",
+    "rule_category": "ACCESS_RESTRICTION",
+    "content": "Rua estreita e sem doca. Apenas veículos VUC autorizados; proibido Toco e Truck.",
+    "effective_priority": "CRITICAL"
+  },
+  {
+    "customer_code": "CUST-CAM-001",
+    "customer_name": "Atacadão Camboriú - Tabuleiro",
+    "rule_category": "DOCK_WINDOW",
+    "content": "Doca de refrigerados opera apenas no período da manhã (até 12:00).",
+    "effective_priority": "HIGH"
+  },
+  {
+    "customer_code": "CUST-CAM-002",
+    "customer_name": "Mercearia Monte Alegre",
+    "rule_category": "ACCESS_RESTRICTION",
+    "content": "Rua estreita e sem doca. Apenas veículos VUC autorizados; proibido Toco e Truck.",
+    "effective_priority": "CRITICAL"
+  },
+  {
+    "customer_code": "CUST-CAM-005",
+    "customer_name": "Mercearia Cedro",
+    "rule_category": "ACCESS_RESTRICTION",
+    "content": "Rua estreita e sem doca. Apenas veículos VUC autorizados; proibido Toco e Truck.",
+    "effective_priority": "CRITICAL"
+  },
+  {
+    "customer_code": "CUST-NAV-001",
+    "customer_name": "Komprão Koch Atacadista - Gravatá",
+    "rule_category": "DOCK_WINDOW",
+    "content": "Doca de refrigerados opera apenas no período da manhã (até 12:00).",
+    "effective_priority": "HIGH"
+  },
+  {
+    "customer_code": "CUST-NAV-001",
+    "customer_name": "Komprão Koch Atacadista - Gravatá",
+    "rule_category": "COLD_CHAIN",
+    "content": "Conferência de temperatura obrigatória na doca (resfriados 0-4 °C, congelados -18 °C). Registro no canhoto.",
+    "effective_priority": "HIGH"
+  },
+  {
+    "customer_code": "CUST-NAV-003",
+    "customer_name": "Mercearia São Domingos",
+    "rule_category": "ACCESS_RESTRICTION",
+    "content": "Rua estreita e sem doca. Apenas veículos VUC autorizados; proibido Toco e Truck.",
+    "effective_priority": "CRITICAL"
+  },
+  {
+    "customer_code": "CUST-NAV-004",
+    "customer_name": "Peixaria & Frios Meia Praia",
+    "rule_category": "COLD_CHAIN",
+    "content": "Conferência de temperatura obrigatória na doca (resfriados 0-4 °C, congelados -18 °C). Registro no canhoto.",
+    "effective_priority": "HIGH"
+  },
+  {
+    "customer_code": "CUST-NAV-006",
+    "customer_name": "Padaria Pão Quente Navegantes",
+    "rule_category": "DOCK_WINDOW",
+    "content": "Recebimento de perecíveis somente antes da abertura da loja (até 09:00).",
+    "effective_priority": "HIGH"
+  },
+  {
+    "customer_code": "CUST-NAV-006",
+    "customer_name": "Padaria Pão Quente Navegantes",
+    "rule_category": "ACCESS_RESTRICTION",
+    "content": "Rua estreita e sem doca. Apenas veículos VUC autorizados; proibido Toco e Truck.",
+    "effective_priority": "CRITICAL"
+  },
+  {
+    "customer_code": "CUST-NAV-007",
+    "customer_name": "Conveniência Aeroporto Navegantes",
+    "rule_category": "ACCESS_RESTRICTION",
+    "content": "Sem doca: descarga rápida na calçada, máximo 15 minutos de parada.",
+    "effective_priority": "HIGH"
+  },
+  {
+    "customer_code": "CUST-PEN-002",
+    "customer_name": "Mercearia Armação",
+    "rule_category": "ACCESS_RESTRICTION",
+    "content": "Rua estreita e sem doca. Apenas veículos VUC autorizados; proibido Toco e Truck.",
+    "effective_priority": "CRITICAL"
+  },
+  {
+    "customer_code": "CUST-BRU-002",
+    "customer_name": "Komprão Koch Atacadista - Santa Rita",
+    "rule_category": "DOCK_WINDOW",
+    "content": "Doca de refrigerados opera apenas no período da manhã (até 12:00).",
+    "effective_priority": "HIGH"
+  },
+  {
+    "customer_code": "CUST-BRU-004",
+    "customer_name": "Archer Supermercados - Jardim Maluche",
+    "rule_category": "COLD_CHAIN",
+    "content": "Conferência de temperatura obrigatória na doca (resfriados 0-4 °C, congelados -18 °C). Registro no canhoto.",
+    "effective_priority": "HIGH"
+  },
+  {
+    "customer_code": "CUST-BRU-005",
+    "customer_name": "Mercearia Águas Claras",
+    "rule_category": "ACCESS_RESTRICTION",
+    "content": "Rua estreita e sem doca. Apenas veículos VUC autorizados; proibido Toco e Truck.",
+    "effective_priority": "CRITICAL"
+  },
+  {
+    "customer_code": "CUST-BRU-006",
+    "customer_name": "Açougue & Frios Steffen",
+    "rule_category": "ACCESS_RESTRICTION",
+    "content": "Rua estreita e sem doca. Apenas veículos VUC autorizados; proibido Toco e Truck.",
+    "effective_priority": "CRITICAL"
+  },
+  {
+    "customer_code": "CUST-BRU-006",
+    "customer_name": "Açougue & Frios Steffen",
+    "rule_category": "COLD_CHAIN",
+    "content": "Conferência de temperatura obrigatória na doca (resfriados 0-4 °C, congelados -18 °C). Registro no canhoto.",
+    "effective_priority": "HIGH"
+  },
+  {
+    "customer_code": "CUST-BRU-007",
+    "customer_name": "Padaria Bela Vista Brusque",
+    "rule_category": "DOCK_WINDOW",
+    "content": "Recebimento de perecíveis somente antes da abertura da loja (até 09:00).",
+    "effective_priority": "HIGH"
+  },
+  {
+    "customer_code": "CUST-BRU-007",
+    "customer_name": "Padaria Bela Vista Brusque",
+    "rule_category": "ACCESS_RESTRICTION",
+    "content": "Rua estreita e sem doca. Apenas veículos VUC autorizados; proibido Toco e Truck.",
     "effective_priority": "CRITICAL"
   }
 ]

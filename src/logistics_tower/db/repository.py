@@ -3,23 +3,87 @@ Repository Layer for Database Queries.
 Connects WMS, TMS, and Memory services directly to relational database tables.
 """
 
-from datetime import datetime
+import hashlib
 import json
 import random
-from typing import Any, Dict, List, Optional
+from collections.abc import Mapping
+from datetime import datetime, timezone
+from typing import Any
 
 from sqlalchemy.orm import joinedload
 
-from logistics_tower.db.address_pool import REGIONAL_CUSTOMERS_POOL
+from logistics_tower.config import settings
 from logistics_tower.db.models import Customer, CustomerRule, DispatchManifest, Order, Vehicle
+from logistics_tower.db.order_factory import build_orders
 from logistics_tower.db.session import SessionLocal, init_db
+
+_DEFAULT_CD = settings.default_cd_id
+
+
+def _stable_digits(text: str, length: int) -> str:
+    """Deterministic numeric fingerprint (Python's `hash()` is salted per process)."""
+    digest = hashlib.sha256(text.strip().lower().encode("utf-8")).hexdigest()
+    return str(int(digest, 16) % (10**length)).zfill(length)
+
+
+def _order_to_dict(o: Order) -> dict[str, Any]:
+    c = o.customer
+    return {
+        "order_id": o.order_number,
+        "customer_id": c.id,
+        "customer_code": c.code,
+        "customer_name": c.name,
+        "segment": c.segment,
+        "city": c.city,
+        "dock_type": c.dock_type,
+        "max_vehicle_allowed": c.max_vehicle_allowed,
+        "address": f"{c.address} - {c.neighborhood}, {c.city} - {c.state}",
+        "lat": c.lat,
+        "lng": c.lng,
+        "weight_kg": o.weight_kg,
+        "volume_m3": o.volume_m3,
+        "cargo_type": o.cargo_type,
+        "temperature_regime": o.temperature_regime,
+        "window_start": o.window_start,
+        "window_end": o.window_end,
+        "priority": o.priority,
+        "value_brl": o.value_brl,
+    }
+
+
+def _vehicle_to_dict(v: Vehicle) -> dict[str, Any]:
+    return {
+        "vehicle_id": v.vehicle_id,
+        "plate": v.plate,
+        "model": v.model,
+        "vehicle_type": v.vehicle_type,
+        "max_weight_kg": v.max_weight_kg,
+        "max_volume_m3": v.max_volume_m3,
+        "has_refrigeration": v.has_refrigeration,
+        "driver_name": v.driver_name,
+        "driver_phone": v.driver_phone,
+        "current_status": v.current_status,
+    }
+
+
+def _rule_to_dict(r: CustomerRule) -> dict[str, Any]:
+    return {
+        "customer_name": r.customer.name,
+        "customer_code": r.customer.code,
+        "max_vehicle_allowed": r.customer.max_vehicle_allowed,
+        "rule_category": r.rule_category,
+        "content": r.content,
+        "effective_priority": r.priority,
+    }
 
 
 class LogisticsRepository:
+    """Data-access layer shared by the WMS, TMS and long-term memory services."""
+
     def __init__(self):
         init_db()
 
-    def get_pending_orders(self, cd_id: str = "CD-ITAJAI-SC01") -> List[Dict[str, Any]]:
+    def get_pending_orders(self, cd_id: str = _DEFAULT_CD) -> list[dict[str, Any]]:
         """Queries pending orders from the database joined with customer location data."""
         with SessionLocal() as session:
             orders = (
@@ -29,72 +93,22 @@ class LogisticsRepository:
                 .all()
             )
 
-            result = []
-            for o in orders:
-                c = o.customer
-                result.append(
-                    {
-                        "order_id": o.order_number,
-                        "customer_id": c.id,
-                        "customer_code": c.code,
-                        "customer_name": c.name,
-                        "address": f"{c.address} - {c.neighborhood}, {c.city} - {c.state}",
-                        "lat": c.lat,
-                        "lng": c.lng,
-                        "weight_kg": o.weight_kg,
-                        "volume_m3": o.volume_m3,
-                        "cargo_type": o.cargo_type,
-                        "window_start": o.window_start,
-                        "window_end": o.window_end,
-                        "priority": o.priority,
-                        "value_brl": o.value_brl,
-                    }
-                )
-            return result
+            return [_order_to_dict(o) for o in orders]
 
-    def get_available_fleet(self, cd_id: str = "CD-ITAJAI-SC01") -> List[Dict[str, Any]]:
+    def get_available_fleet(self, cd_id: str = _DEFAULT_CD) -> list[dict[str, Any]]:
         """Queries available fleet from the database."""
         with SessionLocal() as session:
             fleet = (
-                session.query(Vehicle)
-                .filter(Vehicle.home_cd_id == cd_id, Vehicle.current_status == "AVAILABLE")
-                .all()
+                session.query(Vehicle).filter(Vehicle.home_cd_id == cd_id, Vehicle.current_status == "AVAILABLE").all()
             )
 
-            result = []
-            for v in fleet:
-                result.append(
-                    {
-                        "vehicle_id": v.vehicle_id,
-                        "plate": v.plate,
-                        "model": v.model,
-                        "vehicle_type": v.vehicle_type,
-                        "max_weight_kg": v.max_weight_kg,
-                        "max_volume_m3": v.max_volume_m3,
-                        "has_refrigeration": v.has_refrigeration,
-                        "driver_name": v.driver_name,
-                        "driver_phone": v.driver_phone,
-                        "current_status": v.current_status,
-                    }
-                )
-            return result
+            return [_vehicle_to_dict(v) for v in fleet]
 
-    def get_all_customer_rules(self) -> List[Dict[str, Any]]:
+    def get_all_customer_rules(self) -> list[dict[str, Any]]:
         """Queries all active customer dock and operational rules."""
         with SessionLocal() as session:
             rules = session.query(CustomerRule).options(joinedload(CustomerRule.customer)).all()
-            result = []
-            for r in rules:
-                result.append(
-                    {
-                        "customer_name": r.customer.name,
-                        "customer_code": r.customer.code,
-                        "rule_category": r.rule_category,
-                        "content": r.content,
-                        "effective_priority": r.priority,
-                    }
-                )
-            return result
+            return [_rule_to_dict(r) for r in rules]
 
     def add_customer_rule(self, customer_name: str, rule_category: str, content: str, priority: str = "HIGH") -> None:
         """Inserts a new rule into database for a customer."""
@@ -103,9 +117,9 @@ class LogisticsRepository:
             if not cust:
                 # Create customer if doesn't exist
                 cust = Customer(
-                    code=f"CUST-{abs(hash(customer_name)) % 10000:04d}",
+                    code=f"CUST-{_stable_digits(customer_name, 4)}",
                     name=customer_name,
-                    document_cnpj=f"{abs(hash(customer_name)) % 100000000000000:014d}",
+                    document_cnpj=_stable_digits(customer_name, 14),
                     address="Endereço não informado",
                     neighborhood="Centro",
                     city="Itajaí",
@@ -135,16 +149,16 @@ class LogisticsRepository:
         total_weight_kg: float,
         total_volume_m3: float,
         status: str,
-        human_verdict: Optional[str],
-        human_feedback: Optional[str],
-        manifest_dict: Dict[str, Any],
+        human_verdict: str | None,
+        human_feedback: str | None,
+        manifest_dict: Mapping[str, Any],
     ) -> None:
         """Persists the final dispatch manifest and updates order statuses."""
         with SessionLocal() as session:
             manifest = DispatchManifest(
                 manifest_id=manifest_id,
                 cd_id=cd_id,
-                created_at=datetime.utcnow(),
+                created_at=datetime.now(timezone.utc),
                 total_orders=total_orders,
                 total_vehicles=total_vehicles,
                 total_weight_kg=total_weight_kg,
@@ -158,10 +172,9 @@ class LogisticsRepository:
 
             # If dispatched, update order status to ALLOCATED / DISPATCHED
             if status == "DISPATCHED":
-                order_ids = []
-                for r in manifest_dict.get("routes", []):
-                    for s in r.get("stops", []):
-                        order_ids.append(s["order_id"])
+                order_ids = [
+                    stop["order_id"] for route in manifest_dict.get("routes", []) for stop in route.get("stops", [])
+                ]
 
                 session.query(Order).filter(Order.order_number.in_(order_ids)).update(
                     {"status": "DISPATCHED"}, synchronize_session=False
@@ -169,119 +182,33 @@ class LogisticsRepository:
 
             session.commit()
 
-    def reset_orders_status(self, cd_id: str = "CD-ITAJAI-SC01") -> None:
+    def reset_orders_status(self, cd_id: str = _DEFAULT_CD) -> None:
         """Resets all orders back to PENDING for test isolation or fresh shift planning."""
         with SessionLocal() as session:
-            session.query(Order).filter(Order.cd_id == cd_id).update(
-                {"status": "PENDING"}, synchronize_session=False
+            session.query(Order).filter(Order.cd_id == cd_id).update({"status": "PENDING"}, synchronize_session=False)
+            session.commit()
+
+    def generate_random_orders(self, cd_id: str = _DEFAULT_CD, count: int = 40) -> list[dict[str, Any]]:
+        """
+        Replace the pending order set with `count` fresh refrigerated orders, one per
+        distinct customer of the regional pool (capped by the pool size).
+        """
+        from logistics_tower.db.seed import sync_customers  # local import: seed depends on this module
+
+        with SessionLocal() as session:
+            sync_customers(session)
+            session.query(Order).filter(Order.cd_id == cd_id, Order.status == "PENDING").delete(
+                synchronize_session=False
             )
-            session.commit()
-
-    def sync_customers_from_pool(self) -> None:
-        """Ensures all regional customers from the address pool exist in database."""
-        with SessionLocal() as session:
-            existing_codes = {c[0] for c in session.query(Customer.code).all()}
-            for pool_cust in REGIONAL_CUSTOMERS_POOL:
-                if pool_cust["code"] not in existing_codes:
-                    data = dict(pool_cust)
-                    rules_data = data.pop("rules", [])
-                    cust = Customer(**data)
-                    session.add(cust)
-                    session.flush()
-                    for r in rules_data:
-                        rule = CustomerRule(
-                            customer_id=cust.id,
-                            rule_category=r["category"],
-                            content=r["content"],
-                            priority=r.get("priority", "HIGH"),
-                        )
-                        session.add(rule)
-            session.commit()
-
-    def generate_random_orders(self, cd_id: str = "CD-ITAJAI-SC01", count: int = 8) -> List[Dict[str, Any]]:
-        """
-        Dynamically generates new realistic delivery orders with diverse addresses in Itajaí and region.
-        Clears previous pending orders and saves new orders in the database.
-        """
-        self.sync_customers_from_pool()
-
-        windows = [
-            ("06:30", "09:30"),
-            ("07:00", "10:30"),
-            ("07:30", "11:00"),
-            ("08:00", "11:30"),
-            ("08:30", "12:00"),
-            ("09:00", "13:00"),
-            ("10:00", "14:00"),
-            ("13:00", "16:30"),
-            ("13:30", "17:00"),
-            ("14:00", "17:30"),
-        ]
-
-        with SessionLocal() as session:
-            # Remove previous pending orders for this CD
-            session.query(Order).filter(Order.cd_id == cd_id, Order.status == "PENDING").delete(synchronize_session=False)
-            session.commit()
-
-            customers = session.query(Customer).options(joinedload(Customer.rules)).all()
-            if not customers:
-                return []
-
-            chosen_customers = random.sample(customers, min(count, len(customers)))
-            timestamp_prefix = datetime.utcnow().strftime("%m%d%H%M")
-
-            for idx, cust in enumerate(chosen_customers):
-                # Determine cargo type: if customer has cold chain or keywords, refrigerated
-                cust_name_lower = cust.name.lower()
-                is_cold = (
-                    "refrig" in cust.dock_type.lower()
-                    or "pescado" in cust_name_lower
-                    or "frigorífico" in cust_name_lower
-                    or "carne" in cust_name_lower
-                    or any(r.rule_category == "COLD_CHAIN" for r in cust.rules)
-                    or (random.random() < 0.3)
-                )
-                cargo_type = "refrigerated" if is_cold else "dry"
-
-                # Priority logic
-                if "hospital" in cust_name_lower or "adega" in cust_name_lower:
-                    priority = "VIP"
-                elif random.random() < 0.2:
-                    priority = "HIGH_RISK_LOAD"
-                elif random.random() < 0.4:
-                    priority = "VIP"
-                else:
-                    priority = "STANDARD"
-
-                # Realistic weight & volume
-                weight = round(random.uniform(320.0, 2450.0), 1)
-                volume = round(random.uniform(1.4, 8.8), 1)
-                win_start, win_end = random.choice(windows)
-                value = round(random.uniform(12500.0, 89000.0), 2)
-
-                order_number = f"ORD-ITJ-{timestamp_prefix}-{idx+1:02d}"
-
-                new_order = Order(
-                    order_number=order_number,
-                    customer_id=cust.id,
-                    cd_id=cd_id,
-                    weight_kg=weight,
-                    volume_m3=volume,
-                    cargo_type=cargo_type,
-                    window_start=win_start,
-                    window_end=win_end,
-                    priority=priority,
-                    value_brl=value,
-                    status="PENDING",
-                )
-                session.add(new_order)
-
+            customers = [{"id": c.id, "segment": c.segment, "name": c.name} for c in session.query(Customer).all()]
+            for o in build_orders(customers, count, random.Random(), cd_id=cd_id):
+                session.add(Order(**o))
             session.commit()
 
         return self.get_pending_orders(cd_id)
 
 
-_repo: Optional[LogisticsRepository] = None
+_repo: LogisticsRepository | None = None
 
 
 def get_repository() -> LogisticsRepository:

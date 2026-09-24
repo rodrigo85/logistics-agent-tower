@@ -1,42 +1,60 @@
-# Byte-compiled / optimized / DLL files
+# --- Python ------------------------------------------------------------------
 __pycache__/
 *.py[cod]
 *$py.class
+*.egg-info/
+*.egg
+.eggs/
+build/
+dist/
+wheels/
+sdist/
+develop-eggs/
+.installed.cfg
 
-# Virtual environments
+# --- Virtual environments ----------------------------------------------------
 .venv/
-env/
 venv/
+env/
 ENV/
 
-# Distribution / packaging
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-
-# Testing & Linting
+# --- Testing, linting & typing ----------------------------------------------
 .pytest_cache/
 .ruff_cache/
+.mypy_cache/
 .coverage
+.coverage.*
+coverage.xml
 htmlcov/
 
-# Environment variables
+# --- Local data & runtime artifacts -----------------------------------------
+# The SQLite database is created and seeded automatically on first run.
+data/*.db
+data/*.db-journal
+data/*.db-wal
+data/*.db-shm
+logs/
+*.log
+
+# --- Environment & secrets ---------------------------------------------------
 .env
 .env.local
+.env.*.local
+*.pem
+*.key
 
-# IDE
+# --- Infrastructure ----------------------------------------------------------
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+crash.log
+
+# --- IDEs & OS ---------------------------------------------------------------
 .vscode/
 .idea/
 *.swp
+*.swo
+.DS_Store
+Thumbs.db
