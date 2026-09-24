@@ -5,10 +5,12 @@ Connects WMS, TMS, and Memory services directly to relational database tables.
 
 from datetime import datetime
 import json
+import random
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy.orm import joinedload
 
+from logistics_tower.db.address_pool import REGIONAL_CUSTOMERS_POOL
 from logistics_tower.db.models import Customer, CustomerRule, DispatchManifest, Order, Vehicle
 from logistics_tower.db.session import SessionLocal, init_db
 
@@ -174,6 +176,109 @@ class LogisticsRepository:
                 {"status": "PENDING"}, synchronize_session=False
             )
             session.commit()
+
+    def sync_customers_from_pool(self) -> None:
+        """Ensures all regional customers from the address pool exist in database."""
+        with SessionLocal() as session:
+            existing_codes = {c[0] for c in session.query(Customer.code).all()}
+            for pool_cust in REGIONAL_CUSTOMERS_POOL:
+                if pool_cust["code"] not in existing_codes:
+                    data = dict(pool_cust)
+                    rules_data = data.pop("rules", [])
+                    cust = Customer(**data)
+                    session.add(cust)
+                    session.flush()
+                    for r in rules_data:
+                        rule = CustomerRule(
+                            customer_id=cust.id,
+                            rule_category=r["category"],
+                            content=r["content"],
+                            priority=r.get("priority", "HIGH"),
+                        )
+                        session.add(rule)
+            session.commit()
+
+    def generate_random_orders(self, cd_id: str = "CD-ITAJAI-SC01", count: int = 8) -> List[Dict[str, Any]]:
+        """
+        Dynamically generates new realistic delivery orders with diverse addresses in Itajaí and region.
+        Clears previous pending orders and saves new orders in the database.
+        """
+        self.sync_customers_from_pool()
+
+        windows = [
+            ("06:30", "09:30"),
+            ("07:00", "10:30"),
+            ("07:30", "11:00"),
+            ("08:00", "11:30"),
+            ("08:30", "12:00"),
+            ("09:00", "13:00"),
+            ("10:00", "14:00"),
+            ("13:00", "16:30"),
+            ("13:30", "17:00"),
+            ("14:00", "17:30"),
+        ]
+
+        with SessionLocal() as session:
+            # Remove previous pending orders for this CD
+            session.query(Order).filter(Order.cd_id == cd_id, Order.status == "PENDING").delete(synchronize_session=False)
+            session.commit()
+
+            customers = session.query(Customer).options(joinedload(Customer.rules)).all()
+            if not customers:
+                return []
+
+            chosen_customers = random.sample(customers, min(count, len(customers)))
+            timestamp_prefix = datetime.utcnow().strftime("%m%d%H%M")
+
+            for idx, cust in enumerate(chosen_customers):
+                # Determine cargo type: if customer has cold chain or keywords, refrigerated
+                cust_name_lower = cust.name.lower()
+                is_cold = (
+                    "refrig" in cust.dock_type.lower()
+                    or "pescado" in cust_name_lower
+                    or "frigorífico" in cust_name_lower
+                    or "carne" in cust_name_lower
+                    or any(r.rule_category == "COLD_CHAIN" for r in cust.rules)
+                    or (random.random() < 0.3)
+                )
+                cargo_type = "refrigerated" if is_cold else "dry"
+
+                # Priority logic
+                if "hospital" in cust_name_lower or "adega" in cust_name_lower:
+                    priority = "VIP"
+                elif random.random() < 0.2:
+                    priority = "HIGH_RISK_LOAD"
+                elif random.random() < 0.4:
+                    priority = "VIP"
+                else:
+                    priority = "STANDARD"
+
+                # Realistic weight & volume
+                weight = round(random.uniform(320.0, 2450.0), 1)
+                volume = round(random.uniform(1.4, 8.8), 1)
+                win_start, win_end = random.choice(windows)
+                value = round(random.uniform(12500.0, 89000.0), 2)
+
+                order_number = f"ORD-ITJ-{timestamp_prefix}-{idx+1:02d}"
+
+                new_order = Order(
+                    order_number=order_number,
+                    customer_id=cust.id,
+                    cd_id=cd_id,
+                    weight_kg=weight,
+                    volume_m3=volume,
+                    cargo_type=cargo_type,
+                    window_start=win_start,
+                    window_end=win_end,
+                    priority=priority,
+                    value_brl=value,
+                    status="PENDING",
+                )
+                session.add(new_order)
+
+            session.commit()
+
+        return self.get_pending_orders(cd_id)
 
 
 _repo: Optional[LogisticsRepository] = None

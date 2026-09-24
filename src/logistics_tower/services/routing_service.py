@@ -58,7 +58,10 @@ class GoogleORToolsVRPTSolver:
         if not orders:
             return [], 0.0, 0.0
 
-        base_time = datetime.strptime(start_time_str, "%H:%M")
+        # Loading takes 1 hour (60 min) at CD depot before departure
+        loading_min = settings.loading_time_minutes
+        dock_start = datetime.strptime(start_time_str or settings.dock_start_time, "%H:%M")
+        base_time = dock_start + timedelta(minutes=loading_min)  # Truck departs CD after 1h loading
 
         # Node 0 is the CD Depot; Nodes 1..N are the customer delivery stops
         locations = [(self.cd_lat, self.cd_lng)] + [(o["lat"], o["lng"]) for o in orders]
@@ -68,7 +71,7 @@ class GoogleORToolsVRPTSolver:
         distance_matrix: List[List[int]] = []
         time_matrix: List[List[int]] = []
 
-        service_time_min = 20  # Average unloading time per stop
+        service_time_min = settings.unloading_time_minutes  # 1 hour (60 min) unloading per delivery
 
         for i in range(num_locations):
             dist_row: List[int] = []
@@ -81,19 +84,18 @@ class GoogleORToolsVRPTSolver:
                     d_m = haversine_distance_meters(locations[i][0], locations[i][1], locations[j][0], locations[j][1])
                     # Speed ~ 32 km/h in urban Itajaí (533 m/min)
                     travel_min = max(1, int(d_m / 533.0))
-                    # Add service time when departing from a customer stop
+                    # Add 60 min service time when departing from a customer stop
                     s_min = service_time_min if i > 0 else 0
                     dist_row.append(d_m)
                     time_row.append(travel_min + s_min)
             distance_matrix.append(dist_row)
             time_matrix.append(time_row)
 
-        # Time Windows in minutes relative to start_time
-        time_windows = [(0, 720)]  # Depot open 07:00 to 19:00 (12 hours)
+        # Time Windows in minutes relative to vehicle departure time
+        time_windows = [(0, 720)]  # Depot open for return up to 12 hours
         for o in orders:
             w_start = self._time_str_to_minutes(o["window_start"], base_time)
             w_end = self._time_str_to_minutes(o["window_end"], base_time)
-            # Add tolerance window
             time_windows.append((w_start, max(w_start + 60, w_end)))
 
         # OR-Tools Model Setup
@@ -203,13 +205,14 @@ class GoogleORToolsVRPTSolver:
         start_time_str: str,
     ) -> Tuple[List[Dict[str, Any]], float, float]:
         """Greedy fallback in case OR-Tools bounds are impossible."""
-        base_time = datetime.strptime(start_time_str, "%H:%M")
+        dock_start = datetime.strptime(start_time_str or settings.dock_start_time, "%H:%M")
+        base_time = dock_start + timedelta(minutes=settings.loading_time_minutes)
         stops = []
         curr_time = base_time
         total_km = 0.0
 
         for idx, o in enumerate(orders, start=1):
-            curr_time += timedelta(minutes=35)
+            curr_time += timedelta(minutes=settings.unloading_time_minutes + 25)
             stops.append(
                 {
                     "sequence": idx,

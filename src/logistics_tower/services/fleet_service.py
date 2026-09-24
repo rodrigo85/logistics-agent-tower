@@ -7,6 +7,7 @@ respecting weight limits, volumetric cubage, and temperature control (refrigerat
 import logging
 from typing import Any, Dict, List, Optional
 
+from logistics_tower.config import settings
 from logistics_tower.db.repository import get_repository
 from logistics_tower.db.seed import seed_database
 
@@ -86,8 +87,12 @@ class FleetService:
                 load = loads[cand_id]
                 new_w = load["total_weight_kg"] + order["weight_kg"]
                 new_v = load["total_volume_m3"] + order["volume_m3"]
+                # Enforce max 2 deliveries per vehicle constraint
+                has_capacity_slot = len(load["orders"]) < settings.max_deliveries_per_vehicle
+                fits_weight = new_w <= cand["max_weight_kg"] * 1.05
+                fits_volume = new_v <= cand["max_volume_m3"] * 1.05
 
-                if new_w <= cand["max_weight_kg"] * 1.05 and new_v <= cand["max_volume_m3"] * 1.05:
+                if has_capacity_slot and fits_weight and fits_volume:
                     load["orders"].append(order)
                     load["total_weight_kg"] += order["weight_kg"]
                     load["total_volume_m3"] += order["volume_m3"]
@@ -96,7 +101,10 @@ class FleetService:
                     break
 
             if not allocated and candidates:
-                cand_id = candidates[0]["vehicle_id"]
+                # Find candidate with available delivery slot first
+                available_candidates = [c for c in candidates if len(loads[c["vehicle_id"]]["orders"]) < settings.max_deliveries_per_vehicle]
+                chosen_cand = available_candidates[0] if available_candidates else candidates[0]
+                cand_id = chosen_cand["vehicle_id"]
                 load = loads[cand_id]
                 load["orders"].append(order)
                 load["total_weight_kg"] += order["weight_kg"]

@@ -10,6 +10,113 @@ from logistics_tower.db.session import SessionLocal, init_db
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+FLEET_SEED_DATA = [
+    {
+        "vehicle_id": "VEH-ITJ-VUC-01",
+        "plate": "RLS7B14",
+        "model": "Iveco Daily 35S14 Baú Seco (VUC)",
+        "vehicle_type": "VUC",
+        "max_weight_kg": 1600.0,
+        "max_volume_m3": 11.0,
+        "has_refrigeration": False,
+        "driver_name": "Carlos Eduardo da Silva",
+        "driver_phone": "(47) 99123-4567",
+        "current_status": "AVAILABLE",
+        "home_cd_id": "CD-ITAJAI-SC01",
+    },
+    {
+        "vehicle_id": "VEH-ITJ-REF-02",
+        "plate": "MKF9C32",
+        "model": "Hyundai HR Refrigerado Termo King (VUC)",
+        "vehicle_type": "VUC",
+        "max_weight_kg": 1500.0,
+        "max_volume_m3": 9.5,
+        "has_refrigeration": True,
+        "driver_name": "Marcos Vinicius Santos",
+        "driver_phone": "(47) 99234-5678",
+        "current_status": "AVAILABLE",
+        "home_cd_id": "CD-ITAJAI-SC01",
+    },
+    {
+        "vehicle_id": "VEH-ITJ-TOCO-03",
+        "plate": "QJQ4E88",
+        "model": "Mercedes-Benz Atego 1419 Baú (Toco)",
+        "vehicle_type": "TOCO",
+        "max_weight_kg": 6000.0,
+        "max_volume_m3": 32.0,
+        "has_refrigeration": False,
+        "driver_name": "Roberto Almeida",
+        "driver_phone": "(47) 99345-6789",
+        "current_status": "AVAILABLE",
+        "home_cd_id": "CD-ITAJAI-SC01",
+    },
+    {
+        "vehicle_id": "VEH-ITJ-VUC-04",
+        "plate": "MKB2D55",
+        "model": "Mercedes-Benz Accelo 815 Baú Seco (VUC)",
+        "vehicle_type": "VUC",
+        "max_weight_kg": 2800.0,
+        "max_volume_m3": 18.0,
+        "has_refrigeration": False,
+        "driver_name": "Lucas Pereira de Souza",
+        "driver_phone": "(47) 99456-7890",
+        "current_status": "AVAILABLE",
+        "home_cd_id": "CD-ITAJAI-SC01",
+    },
+    {
+        "vehicle_id": "VEH-ITJ-REF-05",
+        "plate": "RLU3F90",
+        "model": "Iveco Daily 55C17 Refrigerado (VUC)",
+        "vehicle_type": "VUC",
+        "max_weight_kg": 2400.0,
+        "max_volume_m3": 14.5,
+        "has_refrigeration": True,
+        "driver_name": "Fernando Henrique Ramos",
+        "driver_phone": "(47) 99567-8901",
+        "current_status": "AVAILABLE",
+        "home_cd_id": "CD-ITAJAI-SC01",
+    },
+    {
+        "vehicle_id": "VEH-ITJ-TOCO-06",
+        "plate": "QHP1G44",
+        "model": "Volkswagen Delivery 11.180 Baú (Toco)",
+        "vehicle_type": "TOCO",
+        "max_weight_kg": 5500.0,
+        "max_volume_m3": 28.0,
+        "has_refrigeration": False,
+        "driver_name": "André Luiz Martins",
+        "driver_phone": "(47) 99678-9012",
+        "current_status": "AVAILABLE",
+        "home_cd_id": "CD-ITAJAI-SC01",
+    },
+    {
+        "vehicle_id": "VEH-ITJ-TRUCK-07",
+        "plate": "MMI8H12",
+        "model": "Volvo VM 270 Baú 6x2 (Truck)",
+        "vehicle_type": "TRUCK",
+        "max_weight_kg": 13000.0,
+        "max_volume_m3": 55.0,
+        "has_refrigeration": False,
+        "driver_name": "João Paulo Bittencourt",
+        "driver_phone": "(47) 99789-0123",
+        "current_status": "AVAILABLE",
+        "home_cd_id": "CD-ITAJAI-SC01",
+    },
+    {
+        "vehicle_id": "VEH-ITJ-REF-08",
+        "plate": "RDI5J77",
+        "model": "Mercedes-Benz Atego 1719 Refrigerado",
+        "vehicle_type": "TOCO",
+        "max_weight_kg": 8500.0,
+        "max_volume_m3": 42.0,
+        "has_refrigeration": True,
+        "driver_name": "Daniel Costa Fagundes",
+        "driver_phone": "(47) 99890-1234",
+        "current_status": "AVAILABLE",
+        "home_cd_id": "CD-ITAJAI-SC01",
+    },
+]
+
 
 def seed_database():
     """Initializes schema and populates real database records."""
@@ -17,9 +124,18 @@ def seed_database():
     db = SessionLocal()
 
     try:
-        # Check if already seeded
+        # Check if fleet needs expansion to 8 vehicles
+        if db.query(Vehicle).count() < 8:
+            logger.info("Updating fleet to 8 vehicles in database...")
+            existing_ids = {v.vehicle_id for v in db.query(Vehicle).all()}
+            for v_data in FLEET_SEED_DATA:
+                if v_data["vehicle_id"] not in existing_ids:
+                    db.add(Vehicle(**v_data))
+            db.commit()
+            logger.info("Fleet successfully updated to 8 vehicles.")
+
         if db.query(Customer).count() > 0:
-            logger.info("Database already contains customer data. Skipping seed.")
+            logger.info("Database already contains customer data. Skipping customer seed.")
             return
 
         logger.info("Seeding customers in Itajaí - SC and surrounding hubs...")
@@ -202,49 +318,7 @@ def seed_database():
                 )
                 db.add(rule)
 
-        logger.info("Seeding vehicles at CD Itajaí (Itaipava)...")
-        fleet_data = [
-            {
-                "vehicle_id": "VEH-ITJ-VUC-01",
-                "plate": "RLS7B14",
-                "model": "Iveco Daily 35S14 Baú Seco (VUC)",
-                "vehicle_type": "VUC",
-                "max_weight_kg": 1600.0,
-                "max_volume_m3": 11.0,
-                "has_refrigeration": False,
-                "driver_name": "Carlos Eduardo da Silva",
-                "driver_phone": "(47) 99123-4567",
-                "current_status": "AVAILABLE",
-                "home_cd_id": "CD-ITAJAI-SC01",
-            },
-            {
-                "vehicle_id": "VEH-ITJ-REF-02",
-                "plate": "MKF9C32",
-                "model": "Hyundai HR Refrigerado Termo King (VUC)",
-                "vehicle_type": "VUC",
-                "max_weight_kg": 1500.0,
-                "max_volume_m3": 9.5,
-                "has_refrigeration": True,
-                "driver_name": "Marcos Vinicius Santos",
-                "driver_phone": "(47) 99234-5678",
-                "current_status": "AVAILABLE",
-                "home_cd_id": "CD-ITAJAI-SC01",
-            },
-            {
-                "vehicle_id": "VEH-ITJ-TOCO-03",
-                "plate": "QJQ4E88",
-                "model": "Mercedes-Benz Atego 1419 Baú (Toco)",
-                "vehicle_type": "TOCO",
-                "max_weight_kg": 6000.0,
-                "max_volume_m3": 32.0,
-                "has_refrigeration": False,
-                "driver_name": "Roberto Almeida",
-                "driver_phone": "(47) 99345-6789",
-                "current_status": "AVAILABLE",
-                "home_cd_id": "CD-ITAJAI-SC01",
-            },
-        ]
-        for v in fleet_data:
+        for v in FLEET_SEED_DATA:
             db.add(Vehicle(**v))
 
         logger.info("Seeding pending delivery orders for today...")
@@ -342,7 +416,7 @@ def seed_database():
             db.add(order)
 
         db.commit()
-        logger.info(f"Database successfully seeded with {len(customers_data)} customers, {len(fleet_data)} vehicles, and {len(orders_data)} orders!")
+        logger.info(f"Database successfully seeded with {len(customers_data)} customers, {len(FLEET_SEED_DATA)} vehicles, and {len(orders_data)} orders!")
     except Exception as e:
         db.rollback()
         logger.error(f"Failed to seed database: {e}")

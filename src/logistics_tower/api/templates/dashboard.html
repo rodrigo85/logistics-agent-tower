@@ -48,6 +48,10 @@
         <i data-lucide="code" class="w-4 h-4 mr-1.5 text-blue-400"></i>
         Swagger Docs
       </a>
+      <button onclick="generateRandomOrders()" id="btnGenerate" class="px-4 py-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg shadow-lg shadow-indigo-600/30 transition flex items-center">
+        <i data-lucide="shuffle" class="w-4 h-4 mr-1.5"></i>
+        Gerar Novos Pedidos & Endereços
+      </button>
       <button onclick="triggerDispatchPlan()" id="btnPlan" class="px-4 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white rounded-lg shadow-lg shadow-blue-600/30 transition flex items-center">
         <i data-lucide="play" class="w-4 h-4 mr-1.5"></i>
         Calcular Rotas (Multi-Agente)
@@ -75,6 +79,40 @@
           </div>
         </div>
         <div id="map"></div>
+      </div>
+
+      <!-- Tabela de Pedidos Pendentes no WMS -->
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl">
+        <div class="flex items-center justify-between mb-3">
+          <div class="flex items-center space-x-2">
+            <i data-lucide="package-search" class="w-5 h-5 text-indigo-400"></i>
+            <h2 class="font-bold text-white text-base">Pedidos Pendentes de Despacho (WMS CD Itajaí)</h2>
+          </div>
+          <span id="ordersCountBadge" class="text-xs text-indigo-300 bg-indigo-500/10 border border-indigo-500/20 px-3 py-1 rounded-full font-semibold">
+            Carregando pedidos...
+          </span>
+        </div>
+
+        <div class="overflow-x-auto max-h-56 custom-scrollbar border border-slate-800/80 rounded-xl">
+          <table class="w-full text-left text-xs text-slate-300">
+            <thead class="bg-slate-950 text-slate-400 uppercase tracking-wider border-b border-slate-800 font-semibold sticky top-0">
+              <tr>
+                <th class="py-2.5 px-3">Pedido</th>
+                <th class="py-2.5 px-3">Cliente / Destino</th>
+                <th class="py-2.5 px-3">Endereço & Bairro</th>
+                <th class="py-2.5 px-3 text-center">Carga</th>
+                <th class="py-2.5 px-3 text-center">Peso / Cubagem</th>
+                <th class="py-2.5 px-3 text-center">Janela SLA</th>
+                <th class="py-2.5 px-3 text-center">Prioridade</th>
+              </tr>
+            </thead>
+            <tbody id="ordersTableBody" class="divide-y divide-slate-800/60 font-medium">
+              <tr>
+                <td colspan="7" class="text-center py-6 text-slate-500">Carregando pedidos do banco de dados...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <!-- Tabela de Paradas e Sequenciamento -->
@@ -191,9 +229,9 @@
     // Map Initialization (Centered in Itajaí, SC)
     const map = L.map('map').setView([-26.9200, -48.6650], 12);
 
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-      attribution: '&copy; OpenStreetMap &copy; CARTO',
-      maxZoom: 19
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
     }).addTo(map);
 
     // CD Depot Pin (Itaipava)
@@ -209,15 +247,156 @@
 
     let routeLayers = [];
     let currentThreadId = null;
+    let currentFleet = [];
+    let currentOrders = [];
+    let pendingMarkers = [];
 
     // Load Initial Data
     async function loadDashboard() {
       try {
         const res = await fetch('/api/dashboard-data');
         const data = await res.json();
+        currentFleet = data.fleet;
+        currentOrders = data.orders;
         renderFleetCards(data.fleet);
+        renderOrdersTable(data.orders);
+        renderPendingOrderPins(data.orders);
       } catch (err) {
         console.error(err);
+      }
+    }
+
+    function renderOrdersTable(orders) {
+      const tbody = document.getElementById('ordersTableBody');
+      const badge = document.getElementById('ordersCountBadge');
+      tbody.innerHTML = '';
+      badge.innerText = `${orders.length} pedidos pendentes`;
+
+      if (!orders || orders.length === 0) {
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="7" class="text-center py-6 text-slate-500">
+              Nenhum pedido pendente no momento. Clique em "Gerar Novos Pedidos & Endereços".
+            </td>
+          </tr>
+        `;
+        return;
+      }
+
+      orders.forEach(o => {
+        const isRefrig = o.cargo_type === 'refrigerated';
+        const prioBadge = o.priority === 'VIP'
+          ? '<span class="px-2 py-0.5 rounded text-[10px] bg-purple-500/10 text-purple-400 border border-purple-500/20 font-semibold">VIP</span>'
+          : (o.priority === 'HIGH_RISK_LOAD'
+            ? '<span class="px-2 py-0.5 rounded text-[10px] bg-rose-500/10 text-rose-400 border border-rose-500/20 font-semibold">ALTO VALOR</span>'
+            : '<span class="px-2 py-0.5 rounded text-[10px] bg-slate-800 text-slate-300 border border-slate-700">PADRÃO</span>');
+
+        tbody.innerHTML += `
+          <tr class="hover:bg-slate-800/40 transition">
+            <td class="py-2.5 px-3 font-mono font-bold text-slate-200">${o.order_id}</td>
+            <td class="py-2.5 px-3 font-semibold text-white">${o.customer_name}</td>
+            <td class="py-2.5 px-3 text-[11px] text-slate-400">${o.address}</td>
+            <td class="py-2.5 px-3 text-center">
+              <span class="px-2 py-0.5 rounded text-[10px] font-semibold ${isRefrig ? 'bg-cyan-500/10 text-cyan-300 border border-cyan-500/20' : 'bg-slate-800 text-slate-300'}">
+                ${isRefrig ? '❄️ Refrig' : '📦 Seca'}
+              </span>
+            </td>
+            <td class="py-2.5 px-3 text-center text-slate-300 font-mono text-[11px]">${o.weight_kg} kg | ${o.volume_m3} m³</td>
+            <td class="py-2.5 px-3 text-center font-mono text-slate-400 text-[11px]">${o.window_start} - ${o.window_end}</td>
+            <td class="py-2.5 px-3 text-center">${prioBadge}</td>
+          </tr>
+        `;
+      });
+    }
+
+    function renderPendingOrderPins(orders) {
+      pendingMarkers.forEach(m => map.removeLayer(m));
+      pendingMarkers = [];
+
+      const group = [depotMarker.getLatLng()];
+
+      orders.forEach(o => {
+        const isRefrig = o.cargo_type === 'refrigerated';
+        const color = isRefrig ? '#22d3ee' : '#f59e0b';
+
+        const marker = L.circleMarker([o.lat, o.lng], {
+          radius: 8,
+          fillColor: color,
+          color: '#ffffff',
+          weight: 2,
+          opacity: 1,
+          fillOpacity: 0.95
+        }).addTo(map);
+
+        marker.bindPopup(`
+          <div class="text-slate-900 leading-tight">
+            <span class="text-[10px] font-bold px-1.5 py-0.5 rounded ${isRefrig ? 'bg-cyan-100 text-cyan-800' : 'bg-amber-100 text-amber-800'}">
+              ${isRefrig ? '❄️ REFRIGERADO' : '📦 CARGA SECA'}
+            </span>
+            <div class="font-bold text-xs mt-1.5 text-slate-900">${o.customer_name}</div>
+            <div class="text-[11px] text-slate-600 mt-0.5">${o.address}</div>
+            <div class="text-[11px] text-slate-700 mt-1 border-t border-slate-200 pt-1">
+              Pedido: <b>${o.order_id}</b><br>
+              Peso: <b>${o.weight_kg} kg</b> | Volume: <b>${o.volume_m3} m³</b><br>
+              Janela: <b>${o.window_start} - ${o.window_end}</b>
+            </div>
+          </div>
+        `);
+
+        pendingMarkers.push(marker);
+        group.push([o.lat, o.lng]);
+      });
+
+      if (group.length > 1) {
+        map.fitBounds(L.latLngBounds(group), { padding: [50, 50] });
+      }
+    }
+
+    async function generateRandomOrders() {
+      const btn = document.getElementById('btnGenerate');
+      btn.disabled = true;
+      btn.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 mr-1.5 animate-spin"></i> Gerando...`;
+      lucide.createIcons();
+
+      const logBox = document.getElementById('agentLogs');
+      logBox.innerHTML += `<p class="text-indigo-400">> [WMS] Gerando novos pedidos e endereços aleatórios no banco de dados...</p>`;
+
+      try {
+        // Clear previous routes, pins and manifest card
+        routeLayers.forEach(l => map.removeLayer(l));
+        routeLayers = [];
+        pendingMarkers.forEach(m => map.removeLayer(m));
+        pendingMarkers = [];
+        document.getElementById('hitlCard').classList.add('hidden');
+        document.getElementById('manifestCard').classList.add('hidden');
+        document.getElementById('routeSummaryBadge').innerText = 'Aguardando cálculo';
+        document.getElementById('stopsTableBody').innerHTML = `
+          <tr>
+            <td colspan="6" class="text-center py-8 text-slate-500">
+              Novos pedidos gerados! Clique em "Calcular Rotas" para acionar os agentes e o solver matemático.
+            </td>
+          </tr>
+        `;
+
+        const res = await fetch('/api/orders/generate', { method: 'POST' });
+        const data = await res.json();
+        currentOrders = data.orders;
+
+        renderOrdersTable(currentOrders);
+        renderPendingOrderPins(currentOrders);
+        renderFleetCards(currentFleet); // Reset fleet load bars
+
+        logBox.innerHTML += `<p class="text-emerald-400">> [WMS] ${data.message}</p>`;
+        logBox.innerHTML += `<p class="text-slate-300">> [WMS] ${currentOrders.length} novos clientes plotados no mapa regional.</p>`;
+        logBox.scrollTop = logBox.scrollHeight;
+
+      } catch (err) {
+        console.error(err);
+        logBox.innerHTML += `<p class="text-rose-400">> Erro ao gerar pedidos: ${err.message}</p>`;
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = `<i data-lucide="shuffle" class="w-4 h-4 mr-1.5"></i> Gerar Novos Pedidos & Endereços`;
+        lucide.createIcons();
       }
     }
 
@@ -363,25 +542,32 @@
       `;
     }
 
-    function renderRoutesOnMap(routes) {
-      // Clear previous layers
+    async function renderRoutesOnMap(routes) {
+      // Clear previous layers & pending pins
+      pendingMarkers.forEach(m => map.removeLayer(m));
+      pendingMarkers = [];
       routeLayers.forEach(l => map.removeLayer(l));
       routeLayers = [];
 
       const colors = {
         'VEH-ITJ-VUC-01': '#3b82f6',
         'VEH-ITJ-REF-02': '#22d3ee',
-        'VEH-ITJ-TOCO-03': '#f59e0b'
+        'VEH-ITJ-TOCO-03': '#f59e0b',
+        'VEH-ITJ-VUC-04': '#10b981',
+        'VEH-ITJ-REF-05': '#06b6d4',
+        'VEH-ITJ-TOCO-06': '#8b5cf6',
+        'VEH-ITJ-TRUCK-07': '#ec4899',
+        'VEH-ITJ-REF-08': '#38bdf8'
       };
 
       const depot = [-26.9315, -48.7010];
 
-      routes.forEach(r => {
+      for (const r of routes) {
         const color = colors[r.vehicle_id] || '#8b5cf6';
-        const points = [depot];
+        const waypoints = [depot];
 
         r.stops.forEach(s => {
-          points.push([s.lat, s.lng]);
+          waypoints.push([s.lat, s.lng]);
 
           // Marker for stop
           const marker = L.circleMarker([s.lat, s.lng], {
@@ -390,7 +576,7 @@
             color: '#fff',
             weight: 2,
             opacity: 1,
-            fillOpacity: 0.9
+            fillOpacity: 0.95
           }).addTo(map);
 
           marker.bindPopup(`
@@ -402,17 +588,37 @@
           routeLayers.push(marker);
         });
 
-        points.push(depot);
+        waypoints.push(depot);
 
-        const poly = L.polyline(points, {
-          color: color,
-          weight: 4,
-          opacity: 0.85,
-          dashArray: r.vehicle_id === 'VEH-ITJ-REF-02' ? '6, 6' : null
-        }).addTo(map);
+        // Fetch real street geometry for each leg via OpenStreetMap / OSRM
+        for (let i = 0; i < waypoints.length - 1; i++) {
+          const p1 = waypoints[i];
+          const p2 = waypoints[i + 1];
 
-        routeLayers.push(poly);
-      });
+          try {
+            const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${p1[1]},${p1[0]};${p2[1]},${p2[0]}?overview=full&geometries=geojson`;
+            const resp = await fetch(osrmUrl);
+            const data = await resp.json();
+
+            if (data.routes && data.routes.length > 0) {
+              const roadCoords = data.routes[0].geometry.coordinates.map(c => [c[1], c[0]]);
+              const poly = L.polyline(roadCoords, {
+                color: color,
+                weight: 4,
+                opacity: 0.85
+              }).addTo(map);
+              routeLayers.push(poly);
+            } else {
+              // Fallback to straight line
+              const poly = L.polyline([p1, p2], { color: color, weight: 3, opacity: 0.6, dashArray: '4,4' }).addTo(map);
+              routeLayers.push(poly);
+            }
+          } catch (e) {
+            const poly = L.polyline([p1, p2], { color: color, weight: 3, opacity: 0.6, dashArray: '4,4' }).addTo(map);
+            routeLayers.push(poly);
+          }
+        }
+      }
     }
 
     function renderStopsTable(routes) {

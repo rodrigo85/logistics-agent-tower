@@ -55,6 +55,22 @@ def get_dashboard_data():
     }
 
 
+@app.post("/api/orders/generate", tags=["Orders"])
+def generate_orders(count: int = 8):
+    """
+    Generates dynamic realistic delivery orders with new addresses in Itajaí,
+    Balneário Camboriú, Navegantes, and Camboriú, persisting them to the database.
+    """
+    repo = get_repository()
+    orders = repo.generate_random_orders(cd_id=settings.default_cd_id, count=count)
+    return {
+        "status": "ok",
+        "message": f"{len(orders)} novos pedidos gerados com sucesso na região!",
+        "count": len(orders),
+        "orders": orders,
+    }
+
+
 @app.get("/api/thread-state/{thread_id}", tags=["Dashboard"])
 def get_thread_state(thread_id: str):
     """Returns detailed state values (routes, loads) for map and table rendering."""

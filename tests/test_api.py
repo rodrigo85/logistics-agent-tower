@@ -38,3 +38,18 @@ def test_api_plan_and_resume_flow():
     resumed_data = resume_res.json()
     assert resumed_data["status"] == "COMPLETED"
     assert resumed_data["manifest"] is not None
+
+
+def test_api_generate_orders():
+    res = client.post("/api/orders/generate?count=8")
+    assert res.status_code == 200
+    data = res.json()
+    assert data["status"] == "ok"
+    assert data["count"] == 8
+    assert len(data["orders"]) == 8
+    sample = data["orders"][0]
+    assert "address" in sample
+    assert "lat" in sample
+    assert "lng" in sample
+    assert sample["cargo_type"] in ["dry", "refrigerated"]
+

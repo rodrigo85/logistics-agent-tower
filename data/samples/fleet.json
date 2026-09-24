@@ -37,5 +37,70 @@
     "driver_shift_max_hours": 9.0,
     "current_status": "AVAILABLE",
     "permitted_zones": ["CORDEIROS", "BR_101", "ROD_ANTONIO_HEIL", "NAVEGANTES"]
+  },
+  {
+    "vehicle_id": "VEH-ITJ-VUC-04",
+    "plate": "MKB2D55",
+    "model": "Mercedes-Benz Accelo 815 Baú Seco (VUC)",
+    "vehicle_type": "VUC",
+    "max_weight_kg": 2800.0,
+    "max_volume_m3": 18.0,
+    "has_refrigeration": false,
+    "driver_name": "Lucas Pereira de Souza",
+    "driver_shift_max_hours": 8.0,
+    "current_status": "AVAILABLE",
+    "permitted_zones": ["ITAJAI_CENTRO", "FAZENDA", "RESSACADA", "SAO_VICENTE"]
+  },
+  {
+    "vehicle_id": "VEH-ITJ-REF-05",
+    "plate": "RLU3F90",
+    "model": "Iveco Daily 55C17 Refrigerado (VUC)",
+    "vehicle_type": "VUC",
+    "max_weight_kg": 2400.0,
+    "max_volume_m3": 14.5,
+    "has_refrigeration": true,
+    "driver_name": "Fernando Henrique Ramos",
+    "driver_shift_max_hours": 8.0,
+    "current_status": "AVAILABLE",
+    "permitted_zones": ["CENTRO_PORTO", "BALNEARIO_CAMBORIU", "PRAIA_BRAVA"]
+  },
+  {
+    "vehicle_id": "VEH-ITJ-TOCO-06",
+    "plate": "QHP1G44",
+    "model": "Volkswagen Delivery 11.180 Baú (Toco)",
+    "vehicle_type": "TOCO",
+    "max_weight_kg": 5500.0,
+    "max_volume_m3": 28.0,
+    "has_refrigeration": false,
+    "driver_name": "André Luiz Martins",
+    "driver_shift_max_hours": 9.0,
+    "current_status": "AVAILABLE",
+    "permitted_zones": ["CORDEIROS", "RESSACADA", "BR_101", "NAVEGANTES"]
+  },
+  {
+    "vehicle_id": "VEH-ITJ-TRUCK-07",
+    "plate": "MMI8H12",
+    "model": "Volvo VM 270 Baú 6x2 (Truck)",
+    "vehicle_type": "TRUCK",
+    "max_weight_kg": 13000.0,
+    "max_volume_m3": 55.0,
+    "has_refrigeration": false,
+    "driver_name": "João Paulo Bittencourt",
+    "driver_shift_max_hours": 10.0,
+    "current_status": "AVAILABLE",
+    "permitted_zones": ["BR_101", "ROD_ANTONIO_HEIL", "CORDEIROS", "NAVEGANTES"]
+  },
+  {
+    "vehicle_id": "VEH-ITJ-REF-08",
+    "plate": "RDI5J77",
+    "model": "Mercedes-Benz Atego 1719 Refrigerado",
+    "vehicle_type": "TOCO",
+    "max_weight_kg": 8500.0,
+    "max_volume_m3": 42.0,
+    "has_refrigeration": true,
+    "driver_name": "Daniel Costa Fagundes",
+    "driver_shift_max_hours": 9.0,
+    "current_status": "AVAILABLE",
+    "permitted_zones": ["CENTRO_PORTO", "BALNEARIO_CAMBORIU", "NAVEGANTES", "BR_101"]
   }
 ]

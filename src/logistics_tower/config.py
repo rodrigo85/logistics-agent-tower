@@ -45,6 +45,12 @@ class Settings(BaseSettings):
     max_weight_threshold_percent: float = 90.0
     max_volume_threshold_percent: float = 90.0
 
+    # Operational Constraints
+    max_deliveries_per_vehicle: int = 2
+    loading_time_minutes: int = 60       # 1 hour loading at CD
+    unloading_time_minutes: int = 60     # 1 hour unloading at customer
+    dock_start_time: str = "07:00"       # Loading starts at 07:00, departs at 08:00
+
     # Human-in-the-Loop Gate
     hitl_auto_approve: bool = False
 
