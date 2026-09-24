@@ -154,7 +154,7 @@ fail_under = 70
 # Mypy (gradual typing; strictness can be raised module by module)
 # --------------------------------------------------------------------------------------
 [tool.mypy]
-python_version = "3.10"
+# No python_version pin: third-party stubs (e.g. numpy) may use syntax of the running interpreter.
 packages = ["logistics_tower"]
 mypy_path = "src"
 ignore_missing_imports = true
