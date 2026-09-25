@@ -69,7 +69,7 @@ Observations from this run:
 
 * The ambiguous case ("o Koch") was answered with a clarifying question and no mutation, as intended.
 * `question-orders` made the model call `list_orders` repeatedly before answering; the `MAX_TURNS`
-  guard bounded it. Larger models do not show this; it is a cheap place to tune the prompt.
+  guard bounded it. Not yet measured with larger models; it is a cheap place to tune the prompt.
 * Two earlier runs failed 2-3 cases for reasons that were fixed in code, not in the prompt:
   skipping must also cover orders of an already-approved plan, and a shortened chain name
   ("Angeloni") is now disambiguated with the rest of the operator's sentence.
