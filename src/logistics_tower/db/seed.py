@@ -158,6 +158,16 @@ def sync_customers(db: Session) -> None:
     db.commit()
 
 
+def _customer_for_factory(c: Customer) -> dict[str, Any]:
+    return {
+        "id": c.id,
+        "segment": c.segment,
+        "name": c.name,
+        "window_override_start": c.window_override_start,
+        "window_override_end": c.window_override_end,
+    }
+
+
 def _orders_need_reseed(db: Session, force: bool) -> bool:
     if force:
         return True
@@ -169,9 +179,7 @@ def _orders_need_reseed(db: Session, force: bool) -> bool:
 def _seed_orders(db: Session, cd_id: str) -> int:
     db.query(Order).delete()
     db.commit()
-    customers = [
-        {"id": c.id, "segment": c.segment, "name": c.name} for c in db.query(Customer).order_by(Customer.code).all()
-    ]
+    customers = [_customer_for_factory(c) for c in db.query(Customer).order_by(Customer.code).all()]
     rng = random.Random(SEED_RNG)
     orders = build_orders(customers, SEED_ORDER_COUNT, rng, cd_id=cd_id, prefix=SEED_ORDER_PREFIX)
     for o in orders:

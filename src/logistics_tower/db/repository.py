@@ -3,9 +3,11 @@ Repository Layer for Database Queries.
 Connects WMS, TMS, and Memory services directly to relational database tables.
 """
 
+import difflib
 import hashlib
 import json
 import random
+import unicodedata
 from collections.abc import Mapping
 from datetime import datetime, timezone
 from typing import Any
@@ -13,7 +15,7 @@ from typing import Any
 from sqlalchemy.orm import joinedload
 
 from logistics_tower.config import settings
-from logistics_tower.db.models import Customer, CustomerRule, DispatchManifest, Order, Vehicle
+from logistics_tower.db.models import Customer, CustomerRule, DispatchManifest, OperatorMemory, Order, Vehicle
 from logistics_tower.db.order_factory import build_orders
 from logistics_tower.db.session import SessionLocal, init_db
 
@@ -24,6 +26,34 @@ def _stable_digits(text: str, length: int) -> str:
     """Deterministic numeric fingerprint (Python's `hash()` is salted per process)."""
     digest = hashlib.sha256(text.strip().lower().encode("utf-8")).hexdigest()
     return str(int(digest, 16) % (10**length)).zfill(length)
+
+
+def normalize_text(text: str) -> str:
+    """Lower-case, accent-free, single-spaced text for fuzzy customer matching."""
+    stripped = "".join(ch for ch in unicodedata.normalize("NFKD", text) if not unicodedata.combining(ch))
+    return " ".join(stripped.lower().replace("-", " ").split())
+
+
+def _customer_to_dict(c: Customer, pending: int | None = None, skipped: int | None = None) -> dict[str, Any]:
+    data: dict[str, Any] = {
+        "customer_id": c.id,
+        "customer_code": c.code,
+        "customer_name": c.name,
+        "segment": c.segment,
+        "city": c.city,
+        "neighborhood": c.neighborhood,
+        "address": f"{c.address} - {c.neighborhood}, {c.city} - {c.state}",
+        "dock_type": c.dock_type,
+        "max_vehicle_allowed": c.max_vehicle_allowed,
+        "window_override": (
+            f"{c.window_override_start} - {c.window_override_end}" if c.window_override_start else None
+        ),
+    }
+    if pending is not None:
+        data["pending_orders"] = pending
+    if skipped is not None:
+        data["skipped_orders"] = skipped
+    return data
 
 
 def _order_to_dict(o: Order) -> dict[str, Any]:
@@ -48,6 +78,8 @@ def _order_to_dict(o: Order) -> dict[str, Any]:
         "window_end": o.window_end,
         "priority": o.priority,
         "value_brl": o.value_brl,
+        "status": o.status,
+        "skip_reason": o.skip_reason,
     }
 
 
@@ -182,11 +214,126 @@ class LogisticsRepository:
 
             session.commit()
 
-    def reset_orders_status(self, cd_id: str = _DEFAULT_CD) -> None:
-        """Resets all orders back to PENDING for test isolation or fresh shift planning."""
+    def reset_orders_status(self, cd_id: str = _DEFAULT_CD, include_skipped: bool = False) -> None:
+        """Bring DISPATCHED orders back to PENDING before a new planning run (SKIPPED ones stay out unless asked)."""
+        statuses = ["DISPATCHED", "SKIPPED"] if include_skipped else ["DISPATCHED"]
         with SessionLocal() as session:
-            session.query(Order).filter(Order.cd_id == cd_id).update({"status": "PENDING"}, synchronize_session=False)
+            session.query(Order).filter(Order.cd_id == cd_id, Order.status.in_(statuses)).update(
+                {"status": "PENDING", "skip_reason": None}, synchronize_session=False
+            )
             session.commit()
+
+    # ------------------------------------------------------------ copilot
+    def find_customers(self, query: str, limit: int = 5) -> list[dict[str, Any]]:
+        """Fuzzy customer lookup by name / code / neighbourhood / city, with today's order counts."""
+        q = normalize_text(query)
+        if not q:
+            return []
+        with SessionLocal() as session:
+            customers = session.query(Customer).all()
+            scored: list[tuple[float, Customer]] = []
+            for c in customers:
+                name = normalize_text(c.name)
+                haystack = f"{name} {normalize_text(c.code)} {normalize_text(c.neighborhood)} {normalize_text(c.city)}"
+                if q == name or q == normalize_text(c.code):
+                    score = 1.0
+                elif q in haystack:
+                    score = 0.9
+                else:
+                    tokens = [t for t in q.split() if len(t) > 2]
+                    hits = sum(1 for t in tokens if t in haystack)
+                    ratio = difflib.SequenceMatcher(None, q, name).ratio()
+                    score = max(ratio, 0.6 + 0.1 * hits if tokens and hits == len(tokens) else 0.0)
+                if score >= 0.55:
+                    scored.append((score, c))
+            scored.sort(key=lambda t: (-t[0], t[1].name))
+            result = []
+            for score, c in scored[:limit]:
+                pending = (
+                    session.query(Order)
+                    .filter(Order.customer_id == c.id, Order.status.in_(["PENDING", "DISPATCHED"]))
+                    .count()
+                )
+                skipped = session.query(Order).filter(Order.customer_id == c.id, Order.status == "SKIPPED").count()
+                data = _customer_to_dict(c, pending, skipped)
+                data["match_score"] = round(score, 2)
+                result.append(data)
+            return result
+
+    def skip_customer_orders(self, customer_id: int, reason: str) -> list[str]:
+        """Take a customer's pending orders out of today's plan. Returns the affected order numbers."""
+        with SessionLocal() as session:
+            # A plan that was already approved (DISPATCHED) is still today's plan: skipping must cover it too,
+            # because re-planning brings DISPATCHED orders back to PENDING.
+            orders = (
+                session.query(Order)
+                .filter(Order.customer_id == customer_id, Order.status.in_(["PENDING", "DISPATCHED"]))
+                .all()
+            )
+            for o in orders:
+                o.status = "SKIPPED"
+                o.skip_reason = reason[:255]
+            session.commit()
+            return [o.order_number for o in orders]
+
+    def restore_customer_orders(self, customer_id: int) -> list[str]:
+        """Put a customer's skipped orders back into today's plan."""
+        with SessionLocal() as session:
+            orders = session.query(Order).filter(Order.customer_id == customer_id, Order.status == "SKIPPED").all()
+            for o in orders:
+                o.status = "PENDING"
+                o.skip_reason = None
+            session.commit()
+            return [o.order_number for o in orders]
+
+    def reschedule_customer_window(
+        self, customer_id: int, window_start: str, window_end: str, remember: bool = True
+    ) -> list[str]:
+        """Change the receiving window of today's orders and, optionally, remember it for future orders."""
+        with SessionLocal() as session:
+            orders = (
+                session.query(Order)
+                .filter(Order.customer_id == customer_id, Order.status.in_(["PENDING", "DISPATCHED", "SKIPPED"]))
+                .all()
+            )
+            for o in orders:
+                o.window_start = window_start
+                o.window_end = window_end
+            if remember:
+                cust = session.get(Customer, customer_id)
+                if cust is not None:
+                    cust.window_override_start = window_start
+                    cust.window_override_end = window_end
+            session.commit()
+            return [o.order_number for o in orders]
+
+    def get_orders_by_status(self, status: str, cd_id: str = _DEFAULT_CD) -> list[dict[str, Any]]:
+        with SessionLocal() as session:
+            orders = (
+                session.query(Order)
+                .options(joinedload(Order.customer))
+                .filter(Order.cd_id == cd_id, Order.status == status)
+                .all()
+            )
+            return [_order_to_dict(o) for o in orders]
+
+    def add_operator_memory(self, category: str, content: str) -> None:
+        with SessionLocal() as session:
+            session.add(OperatorMemory(category=category, content=content[:2000]))
+            session.commit()
+
+    def get_operator_memories(self, limit: int = 20) -> list[dict[str, Any]]:
+        with SessionLocal() as session:
+            rows = (
+                session.query(OperatorMemory)
+                .order_by(OperatorMemory.created_at.desc(), OperatorMemory.id.desc())
+                .limit(limit)
+                .all()
+            )
+            return [
+                {"id": r.id, "category": r.category, "content": r.content, "created_at": r.created_at.isoformat()}
+                for r in rows
+            ]
 
     def generate_random_orders(self, cd_id: str = _DEFAULT_CD, count: int = 40) -> list[dict[str, Any]]:
         """
@@ -200,7 +347,16 @@ class LogisticsRepository:
             session.query(Order).filter(Order.cd_id == cd_id, Order.status == "PENDING").delete(
                 synchronize_session=False
             )
-            customers = [{"id": c.id, "segment": c.segment, "name": c.name} for c in session.query(Customer).all()]
+            customers = [
+                {
+                    "id": c.id,
+                    "segment": c.segment,
+                    "name": c.name,
+                    "window_override_start": c.window_override_start,
+                    "window_override_end": c.window_override_end,
+                }
+                for c in session.query(Customer).all()
+            ]
             for o in build_orders(customers, count, random.Random(), cd_id=cd_id):
                 session.add(Order(**o))
             session.commit()

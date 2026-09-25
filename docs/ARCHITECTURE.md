@@ -49,11 +49,12 @@ flowchart LR
 
 | Layer | Package | Responsibility | Depends on |
 |-------|---------|----------------|------------|
-| Presentation | `api/` (routers, schemas, app factory), `cli.py`, `api/templates/` | HTTP contract, dashboard, terminal UX | orchestration |
-| Orchestration | `graph.py`, `state.py`, `agents/` | LangGraph DAG, shared state, specialist agent nodes, HITL gate | tool boundary |
+| Presentation | `api/` (routers, schemas, app factory), `cli.py`, `chat_cli.py`, `api/templates/` | HTTP contract, dashboard (map + copilot chat), terminal UX | orchestration |
+| Orchestration | `graph.py`, `state.py`, `agents/`, `services/dispatch_service.py` | LangGraph DAG, shared state, specialist agent nodes, HITL gate, dispatch planner; `agents/copilot.py` is the LLM tool-calling agent | tool boundary |
 | Tool boundary | `mcp/` | Model Context Protocol server (stdio) and in-process client used by agents | services |
 | Domain services | `services/` | Sweep clustering (`fleet_service`), OR-Tools TSPTW + itinerary (`routing_service`), WMS read model, Google Maps traffic | data access |
-| Memory | `memory/` | Short-term checkpointer (LangGraph `MemorySaver`) and long-term customer rules backed by SQL | data access |
+| Memory | `memory/`, `db` tables `customer_rules`, `operator_memory` | Short-term checkpointers (planning threads, chat threads) and long-term customer rules / operator notes / window overrides in SQL | data access |
+| LLM | `llm/` | Provider factory (Ollama, Gemini, OpenAI) and availability diagnostics | - |
 | Data access | `db/` | SQLAlchemy models, repository, idempotent seeder, regional customer pool, order factory | database |
 | Cross-cutting | `config.py`, `logging_setup.py` | 12-factor settings, logging bootstrap | - |
 
@@ -86,6 +87,27 @@ stateDiagram-v2
 
 State is a `TypedDict` (`state.py`). Every node returns a partial update; the
 `execution_log` list is appended by each node so the UI can show the audit trail.
+
+## 4b. The Dispatcher Copilot
+
+```mermaid
+flowchart LR
+    Op([Dispatcher]) -->|"Não vamos atender X hoje"| Chat[POST /copilot/chat]
+    Chat --> LLM[LLM node<br/>system prompt + long-term memory]
+    LLM -->|tool call| T[ToolNode<br/>MCP operator tools]
+    T --> LLM
+    LLM -->|final answer| Chat
+    T -.->|skip / reschedule| DB[(orders, customers,<br/>operator_memory)]
+    Chat -->|mutation happened| Plan[DispatchPlanner.plan]
+    Plan --> Cache[latest plan → dashboard]
+```
+
+* The model only acts through tools; customer resolution, window parsing and the
+  "re-plan after a mutation" rule are deterministic code, not prompt hopes.
+* Ambiguous names (chains with several stores) return `AMBIGUOUS` and the model
+  asks which store; nothing is mutated.
+* Chat threads have their own checkpointer; long-term memory is SQL.
+* Provider quality is measured by `evals/run_evals.py` (see `docs/LLM_EVALUATION.md`).
 
 ## 5. Human-in-the-Loop contract
 
@@ -156,9 +178,9 @@ imported (see `tests/conftest.py`), so the developer database is never touched.
 
 ## 10. Known limitations and roadmap
 
-* Agents are deterministic specialists today. The `LLM_PROVIDER` settings and
-  the optional extras (`gcp`, `openai`, `ollama`) are reserved for an
-  LLM-backed negotiation/explanation node; see ADR-0001.
+* Planning agents are deterministic by design; the only LLM is the copilot
+  (ADR-0007). Its quality depends on the provider; small local models may need
+  the operator to rephrase.
 * The MCP server module (`mcp/server.py`) requires the `mcp` extra and is
   exercised manually (stdio), not by the unit suite.
 * Single-process checkpointer; no auth on the API (intended to sit behind an

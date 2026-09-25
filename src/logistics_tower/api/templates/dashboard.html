@@ -244,6 +244,37 @@
     <!-- Coluna Direita: Frota, HITL Gate & Logs (1 Col) -->
     <div class="space-y-6">
 
+      <!-- Dispatcher Copilot (LLM) -->
+      <div id="copilotCard" class="bg-slate-900 border border-cyan-500/30 rounded-2xl p-5 shadow-xl shadow-cyan-950/20">
+        <div class="flex items-center justify-between mb-3">
+          <div class="flex items-center space-x-2">
+            <div class="bg-cyan-500/15 p-1.5 rounded-lg text-cyan-300"><i data-lucide="bot" class="w-5 h-5"></i></div>
+            <h2 class="font-bold text-white text-base">Copiloto do Despachante</h2>
+          </div>
+          <span id="copilotStatusBadge" class="text-[10px] px-2 py-0.5 rounded-full border border-slate-700 bg-slate-800 text-slate-300 font-mono">verificando LLM...</span>
+        </div>
+        <p class="text-[11px] text-slate-400 mb-2">
+          Escreva instruções em linguagem natural. O copiloto altera os pedidos de hoje e recalcula as rotas.
+        </p>
+        <div class="flex flex-wrap gap-1.5 mb-2">
+          <button onclick="useCopilotExample(this)" class="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition">Não vamos atender o Bistek da Fazenda hoje</button>
+          <button onclick="useCopilotExample(this)" class="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition">Padaria Praia Brava agendou recebimento entre 9 e 11</button>
+          <button onclick="useCopilotExample(this)" class="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition">Quais paradas estão atrasadas?</button>
+        </div>
+        <div id="copilotMessages" class="bg-slate-950 border border-slate-800/80 rounded-xl p-3 h-56 overflow-y-auto custom-scrollbar space-y-2 text-xs">
+          <div class="text-slate-500 text-[11px]">Ex.: "Cliente X agendou recebimento entre 8 e 10" ou "Volta a atender o cliente Y hoje".</div>
+        </div>
+        <form onsubmit="sendCopilotMessage(event)" class="mt-2 flex items-end space-x-2">
+          <textarea id="copilotInput" rows="2" placeholder="Digite a instrução para o copiloto..."
+            class="flex-1 bg-slate-950 border border-slate-700 focus:border-cyan-500 rounded-lg px-3 py-2 text-xs text-slate-100 outline-none resize-none"
+            onkeydown="if(event.key==='Enter' && !event.shiftKey){event.preventDefault(); sendCopilotMessage(event);}"></textarea>
+          <button id="copilotSend" type="submit"
+            class="px-3 py-2 text-xs font-bold bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg shadow-lg shadow-cyan-600/30 transition flex items-center">
+            <i data-lucide="send" class="w-4 h-4"></i>
+          </button>
+        </form>
+      </div>
+
       <!-- Human-in-the-Loop Alert & Action Box -->
       <div id="hitlCard"
         class="hidden bg-amber-950/40 border border-amber-500/40 rounded-2xl p-5 shadow-xl shadow-amber-950/20">
@@ -475,6 +506,129 @@
     let currentRoutes = [];
     let selectedVehicleForMap = null;
     let pendingMarkers = [];
+    let currentSkipped = [];
+    let copilotThreadId = null;
+
+
+    // ------------------------------------------------------------------ Copilot
+    async function loadCopilotStatus() {
+      const badge = document.getElementById('copilotStatusBadge');
+      try {
+        const res = await fetch('/copilot/status');
+        const st = await res.json();
+        if (st.available) {
+          badge.innerText = `${st.provider} · ${st.model}`;
+          badge.className = 'text-[10px] px-2 py-0.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 text-emerald-300 font-mono';
+        } else {
+          badge.innerText = `LLM indisponível (${st.provider})`;
+          badge.title = st.detail || '';
+          badge.className = 'text-[10px] px-2 py-0.5 rounded-full border border-rose-500/30 bg-rose-500/10 text-rose-300 font-mono';
+        }
+      } catch (e) {
+        badge.innerText = 'status desconhecido';
+      }
+    }
+
+    function useCopilotExample(btn) {
+      const input = document.getElementById('copilotInput');
+      input.value = btn.innerText;
+      input.focus();
+    }
+
+    function appendCopilotMessage(role, text, extraHtml = '') {
+      const box = document.getElementById('copilotMessages');
+      const isUser = role === 'user';
+      const el = document.createElement('div');
+      el.className = isUser ? 'flex justify-end' : 'flex justify-start';
+      el.innerHTML = `
+        <div class="max-w-[92%] rounded-xl px-3 py-2 ${isUser ? 'bg-cyan-600/20 border border-cyan-500/30 text-cyan-50' : 'bg-slate-900 border border-slate-800 text-slate-200'}">
+          <div class="whitespace-pre-wrap leading-relaxed">${text.replace(/</g, '&lt;')}</div>
+          ${extraHtml}
+        </div>`;
+      box.appendChild(el);
+      box.scrollTop = box.scrollHeight;
+      return el;
+    }
+
+    async function refreshAfterCopilot(dispatch) {
+      const res = await fetch('/api/dashboard-data');
+      const data = await res.json();
+      currentFleet = data.fleet || [];
+      currentOrders = data.orders || [];
+      currentRoutes = data.routes || [];
+      currentLoads = data.load_allocation || [];
+      currentSkipped = data.skipped_orders || [];
+      renderFleetCards(currentFleet, currentLoads);
+      renderOrdersTable(currentOrders);
+      if (currentRoutes.length > 0) {
+        await renderRoutesOnMap(currentRoutes);
+        renderStopsTable(currentRoutes);
+      } else {
+        renderPendingOrderPins(currentOrders);
+      }
+      if (dispatch) {
+        currentThreadId = dispatch.thread_id;
+        const hitl = document.getElementById('hitlCard');
+        if (dispatch.status === 'AWAITING_HUMAN_APPROVAL') {
+          hitl.classList.remove('hidden');
+          document.getElementById('hitlReason').innerText = dispatch.approval_reason || 'Exceções operacionais detectadas.';
+        } else {
+          hitl.classList.add('hidden');
+        }
+        document.getElementById('manifestCard').classList.add('hidden');
+      }
+    }
+
+    async function sendCopilotMessage(event) {
+      if (event) event.preventDefault();
+      const input = document.getElementById('copilotInput');
+      const text = input.value.trim();
+      if (!text) return;
+      const btn = document.getElementById('copilotSend');
+      btn.disabled = true;
+      input.value = '';
+      appendCopilotMessage('user', text);
+      const pending = appendCopilotMessage('assistant', 'Pensando e aplicando alterações...');
+      const logBox = document.getElementById('agentLogs');
+      logBox.innerHTML += `<p class="text-cyan-400">> [Copiloto] ${text.replace(/</g, '&lt;')}</p>`;
+
+      try {
+        const res = await fetch('/copilot/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: text, thread_id: copilotThreadId })
+        });
+        const data = await res.json();
+        pending.remove();
+        if (!res.ok) {
+          appendCopilotMessage('assistant', `Erro: ${data.detail || res.status}`);
+          return;
+        }
+        copilotThreadId = data.thread_id;
+        const chips = (data.actions || []).map(a => {
+          const st = a.result && a.result.status ? a.result.status : (a.tool === 'replan_dispatch' && a.result ? a.result.status : '');
+          const ok = !st || st === 'OK' || st === 'COMPLETED' || st === 'AWAITING_HUMAN_APPROVAL';
+          return `<span class="inline-block mt-1 mr-1 text-[10px] px-1.5 py-0.5 rounded font-mono ${ok ? 'bg-emerald-500/10 text-emerald-300 border border-emerald-500/20' : 'bg-amber-500/10 text-amber-300 border border-amber-500/20'}">${a.tool}${st ? ' · ' + st : ''}${a.auto ? ' (auto)' : ''}</span>`;
+        }).join('');
+        appendCopilotMessage('assistant', data.reply, chips ? `<div class="mt-1.5">${chips}</div>` : '');
+        (data.actions || []).forEach(a => {
+          logBox.innerHTML += `<p class="text-slate-300">> [Copiloto] tool ${a.tool}</p>`;
+        });
+        logBox.scrollTop = logBox.scrollHeight;
+        if (data.replanned) {
+          await refreshAfterCopilot(data.dispatch);
+          logBox.innerHTML += `<p class="text-emerald-400">> [Copiloto] Rotas recalculadas (${data.dispatch ? data.dispatch.status : 'ok'}).</p>`;
+        }
+      } catch (err) {
+        pending.remove();
+        appendCopilotMessage('assistant', `Erro: ${err.message}`);
+      } finally {
+        btn.disabled = false;
+        lucide.createIcons();
+      }
+    }
+
+    loadCopilotStatus();
 
     // Load Initial Data
     async function loadDashboard() {
@@ -485,6 +639,8 @@
         currentOrders = data.orders || [];
         currentRoutes = data.routes || [];
         currentLoads = data.load_allocation || [];
+        currentSkipped = data.skipped_orders || [];
+        if (data.plan_thread_id) currentThreadId = data.plan_thread_id;
 
         if (data.google_traffic_active) {
           const badge = document.getElementById('googleTrafficBadge');
@@ -509,7 +665,7 @@
       const tbody = document.getElementById('ordersTableBody');
       const badge = document.getElementById('ordersCountBadge');
       tbody.innerHTML = '';
-      badge.innerText = `${orders.length} pedidos pendentes`;
+      badge.innerText = `${orders.length} pedidos pendentes` + (currentSkipped.length ? ` · ${currentSkipped.length} excluídos hoje` : '');
 
       if (!orders || orders.length === 0) {
         tbody.innerHTML = `

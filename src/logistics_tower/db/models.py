@@ -37,6 +37,9 @@ class Customer(Base):
         String(50), default="NIVEL_SOLO"
     )  # NIVEL_SOLO, DOCA_ELEVADA, RAMPA_ESTREITA, SEM_DOCA
     max_vehicle_allowed: Mapped[str] = mapped_column(String(50), default="TOCO")  # VUC, TOCO, TRUCK
+    # Receiving window agreed with the customer (long-term memory); overrides the segment default.
+    window_override_start: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    window_override_end: Mapped[str | None] = mapped_column(String(10), nullable=True)
 
     rules: Mapped[list["CustomerRule"]] = relationship(
         "CustomerRule", back_populates="customer", cascade="all, delete-orphan"
@@ -88,9 +91,21 @@ class Order(Base):
     window_end: Mapped[str] = mapped_column(String(10))  # "11:00"
     priority: Mapped[str] = mapped_column(String(30), default="STANDARD")  # VIP, STANDARD, HIGH_RISK_LOAD
     value_brl: Mapped[float] = mapped_column(Float)
-    status: Mapped[str] = mapped_column(String(30), default="PENDING")  # PENDING, ALLOCATED, DISPATCHED
+    status: Mapped[str] = mapped_column(String(30), default="PENDING")  # PENDING, SKIPPED, DISPATCHED
+    skip_reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     customer: Mapped["Customer"] = relationship("Customer", back_populates="orders")
+
+
+class OperatorMemory(Base):
+    """Long-term memory written by the dispatcher through the copilot (notes, standing instructions)."""
+
+    __tablename__ = "operator_memory"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    category: Mapped[str] = mapped_column(String(40), default="NOTE", index=True)  # NOTE, SKIP, WINDOW, RULE
+    content: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
 
 
 class DispatchManifest(Base):

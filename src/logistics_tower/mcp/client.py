@@ -9,10 +9,16 @@ from typing import Any
 
 from logistics_tower.mcp.tools import (
     tool_confirm_dispatch,
+    tool_find_customers,
     tool_get_available_fleet,
     tool_get_customer_dock_rules,
     tool_get_pending_orders,
+    tool_list_orders,
     tool_optimize_route,
+    tool_remember_note,
+    tool_reschedule_customer_window,
+    tool_restore_customer_today,
+    tool_skip_customer_today,
 )
 
 logger = logging.getLogger(__name__)
@@ -31,6 +37,12 @@ class MCPToolClient:
             "get_customer_dock_rules": tool_get_customer_dock_rules,
             "optimize_vehicle_route": tool_optimize_route,
             "confirm_dispatch_manifest": tool_confirm_dispatch,
+            "find_customers": tool_find_customers,
+            "skip_customer_today": tool_skip_customer_today,
+            "restore_customer_today": tool_restore_customer_today,
+            "reschedule_customer_window": tool_reschedule_customer_window,
+            "list_orders": tool_list_orders,
+            "remember_note": tool_remember_note,
         }
 
     def list_tools(self) -> list[dict[str, str]]:

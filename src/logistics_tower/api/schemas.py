@@ -52,3 +52,33 @@ class TrafficStatusResponse(BaseModel):
     configured: bool
     live_traffic_enabled: bool
     message: str
+
+
+class ChatRequest(BaseModel):
+    message: str = Field(min_length=1, max_length=2000, description="Operator instruction or question")
+    thread_id: str | None = Field(default=None, description="Conversation thread (short-term memory)")
+
+
+class ChatResponse(BaseModel):
+    thread_id: str
+    reply: str
+    actions: list[dict[str, Any]] = Field(default_factory=list)
+    replanned: bool = False
+    dispatch: dict[str, Any] | None = None
+
+
+class CopilotStatusResponse(BaseModel):
+    provider: str
+    model: str | None = None
+    available: bool
+    detail: str = ""
+    tools: list[str] = Field(default_factory=list)
+
+
+class AgentsResponse(BaseModel):
+    version: str
+    env: str
+    planning_agents: list[dict[str, Any]]
+    mcp_tools: list[str]
+    copilot_tools: list[str]
+    latest_plan: dict[str, Any]

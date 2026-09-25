@@ -10,10 +10,16 @@ from mcp.server.mcpserver import MCPServer
 from logistics_tower.config import settings
 from logistics_tower.mcp.tools import (
     tool_confirm_dispatch,
+    tool_find_customers,
     tool_get_available_fleet,
     tool_get_customer_dock_rules,
     tool_get_pending_orders,
+    tool_list_orders,
     tool_optimize_route,
+    tool_remember_note,
+    tool_reschedule_customer_window,
+    tool_restore_customer_today,
+    tool_skip_customer_today,
 )
 
 # Initialize MCP 2.x Server
@@ -57,6 +63,42 @@ def confirm_dispatch_manifest(manifest_id: str, cd_id: str = settings.default_cd
     """Emits the final electronic dispatch manifest in the WMS/TMS after supervisor human sign-off."""
     res = tool_confirm_dispatch(manifest_id, cd_id)
     return json.dumps(res, ensure_ascii=False)
+
+
+@mcp_server.tool()
+def find_customers(query: str) -> str:
+    """Searches customers by name, code, neighbourhood or city and returns candidates with today's order counts."""
+    return json.dumps(tool_find_customers(query), ensure_ascii=False)
+
+
+@mcp_server.tool()
+def skip_customer_today(customer: str, reason: str = "Solicitado pelo despachante") -> str:
+    """Removes a customer's pending orders from today's plan (kept in the WMS as SKIPPED)."""
+    return json.dumps(tool_skip_customer_today(customer, reason), ensure_ascii=False)
+
+
+@mcp_server.tool()
+def restore_customer_today(customer: str) -> str:
+    """Puts a customer's skipped orders back into today's plan."""
+    return json.dumps(tool_restore_customer_today(customer), ensure_ascii=False)
+
+
+@mcp_server.tool()
+def reschedule_customer_window(customer: str, window_start: str, window_end: str, remember: bool = True) -> str:
+    """Sets the receiving window (HH:MM) of a customer's orders today and optionally remembers it."""
+    return json.dumps(tool_reschedule_customer_window(customer, window_start, window_end, remember), ensure_ascii=False)
+
+
+@mcp_server.tool()
+def list_orders(status: str = "PENDING") -> str:
+    """Lists today's orders by status (PENDING, SKIPPED, DISPATCHED)."""
+    return json.dumps(tool_list_orders(status), ensure_ascii=False)
+
+
+@mcp_server.tool()
+def remember_note(note: str) -> str:
+    """Stores a standing instruction from the dispatcher in long-term memory."""
+    return json.dumps(tool_remember_note(note), ensure_ascii=False)
 
 
 @mcp_server.resource("wms://orders/summary")

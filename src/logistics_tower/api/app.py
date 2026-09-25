@@ -14,7 +14,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from logistics_tower import __version__
-from logistics_tower.api.routers import dashboard, dispatch, fleet, orders, system, traffic
+from logistics_tower.api.routers import copilot, dashboard, dispatch, fleet, orders, system, traffic
 from logistics_tower.config import settings
 from logistics_tower.db.seed import seed_database
 from logistics_tower.logging_setup import configure_logging
@@ -27,6 +27,7 @@ Autonomous multi-agent dispatch and route optimisation for a distribution center
 * **LangGraph** orchestrates Supervisor, Fleet, Routing and Risk agents with a Human-in-the-Loop gate.
 * **Google OR-Tools** solves the capacitated VRP with time windows.
 * **Model Context Protocol** exposes WMS/TMS tools to the agents.
+* **Dispatcher Copilot** (LLM via Ollama / Gemini / OpenAI) applies operator instructions and re-plans.
 """
 
 
@@ -54,4 +55,5 @@ def create_app() -> FastAPI:
     app.include_router(fleet.router)
     app.include_router(orders.router)
     app.include_router(traffic.router)
+    app.include_router(copilot.router)
     return app

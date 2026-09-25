@@ -28,7 +28,7 @@ def hitl_gate_node(state: LogisticsAgentState) -> dict[str, Any]:
     The graph state is persisted in checkpointer until human input resumes it.
     """
     requires_approval = state.get("requires_human_approval", False)
-    auto_approve = settings.hitl_auto_approve
+    auto_approve = settings.hitl_auto_approve or bool(state.get("auto_approve", False))
 
     if requires_approval and not auto_approve:
         logger.warning("HITL: Pausing graph for human dispatcher review.")

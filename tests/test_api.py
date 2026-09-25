@@ -31,11 +31,13 @@ def test_api_dashboard_data_exposes_fleet_and_orders():
     assert data["cd_id"] == settings.default_cd_id
 
 
-def test_api_plan_completes_without_risks_when_thresholds_are_default():
+def test_api_plan_with_auto_approve_never_pauses(force_hitl):
     res = client.post("/dispatch/plan", json={"cd_id": settings.default_cd_id, "auto_approve": True})
     assert res.status_code == 200
     data = res.json()
-    assert data["status"] in {"COMPLETED", "AWAITING_HUMAN_APPROVAL"}
+    assert data["status"] == "COMPLETED"
+    assert data["requires_approval"] is False
+    assert data["manifest"]["total_orders_dispatched"] == 40
     assert data["thread_id"].startswith("dispatch-")
 
     state = client.get(f"/api/thread-state/{data['thread_id']}").json()

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "logistics-agent-tower"
-version = "1.2.0"
+version = "1.3.0"
 description = "Autonomous multi-agent control tower for distribution-center dispatch and route optimization (LangGraph, OR-Tools, MCP, Human-in-the-Loop)."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -72,6 +72,7 @@ dev = [
 logistics-tower = "logistics_tower.cli:main"
 logistics-tower-api = "logistics_tower.api.main:start"
 logistics-tower-seed = "logistics_tower.db.seed:main"
+logistics-tower-chat = "logistics_tower.chat_cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -143,6 +144,7 @@ branch = true
 omit = [
     "src/logistics_tower/db/address_pool.py",
     "src/logistics_tower/mcp/server.py",
+    "src/logistics_tower/chat_cli.py",
 ]
 
 [tool.coverage.report]

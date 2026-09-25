@@ -115,7 +115,10 @@ def build_order(customer: dict[str, Any], order_number: str, rng: random.Random,
     weight = round(rng.uniform(*profile["weight"]), 1)
     volume = round(rng.uniform(*profile["volume"]), 2)
     value = round(weight * rng.uniform(*profile["value_per_kg"]), 2)
-    window_start, window_end = rng.choice(profile["windows"])
+    if customer.get("window_override_start") and customer.get("window_override_end"):
+        window_start, window_end = customer["window_override_start"], customer["window_override_end"]
+    else:
+        window_start, window_end = rng.choice(profile["windows"])
 
     if segment in _FROZEN_SEGMENTS or rng.random() < _FROZEN_PROBABILITY.get(segment, 0.0):
         regime = CONGELADO

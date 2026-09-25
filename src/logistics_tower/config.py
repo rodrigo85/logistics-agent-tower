@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     database_url: str | None = None
 
     # --- LLM providers (reserved for LLM-backed agent nodes) -----------------
-    llm_provider: Literal["ollama", "gemini", "openai"] = "ollama"
+    llm_provider: Literal["ollama", "gemini", "openai"] = "ollama"  # copilot backend; must support tool calling
     ollama_base_url: str = "http://localhost:11434"
     ollama_model: str = "qwen2.5:7b"
     google_api_key: SecretStr | None = None

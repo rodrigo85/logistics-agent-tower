@@ -38,6 +38,10 @@ def get_dashboard_data():
         "orders": repo.get_pending_orders(settings.default_cd_id),
         "routes": cache.routes,
         "load_allocation": cache.load_allocation,
+        "unallocated_orders": cache.unallocated_orders,
+        "skipped_orders": repo.get_orders_by_status("SKIPPED", settings.default_cd_id),
+        "plan_thread_id": cache.thread_id,
+        "plan_status": cache.status,
         "google_traffic_active": get_traffic_service().is_available(),
     }
 

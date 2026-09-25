@@ -1,16 +1,41 @@
 """
-Logistics tools exposed through the Model Context Protocol (MCP) and callable by the agents.
+Logistics tools exposed through the Model Context Protocol (MCP).
+
+Every function here is registered twice: in-process for the LangGraph agents
+(`mcp/client.py`) and over stdio for external MCP clients (`mcp/server.py`).
+The conversational copilot binds the operator-facing ones as LangChain tools.
 """
 
+import contextvars
+import re
 from typing import Any
 
 from logistics_tower.config import settings
+from logistics_tower.db.repository import get_repository, normalize_text
 from logistics_tower.memory.long_term import get_customer_memory_store
 from logistics_tower.services.fleet_service import get_fleet_service
 from logistics_tower.services.routing_service import get_routing_service
 from logistics_tower.services.wms_service import get_wms_service
 
+# The operator's full sentence, set by the copilot for the duration of one chat turn. Lets the tools
+# disambiguate a shortened customer name ("Angeloni") with the rest of the sentence ("... do Centro de Itajaí").
+operator_message: contextvars.ContextVar[str] = contextvars.ContextVar("operator_message", default="")
 
+_TIME_RE = re.compile(r"^\s*(\d{1,2})(?:[:h](\d{2})?)?\s*(?:h|hs|horas)?\s*$", re.IGNORECASE)
+
+
+def normalize_clock(value: str) -> str:
+    """Accept '8', '8h', '8:30', '08h30', '14 horas' and return 'HH:MM'."""
+    m = _TIME_RE.match(str(value))
+    if not m:
+        raise ValueError(f"Horário inválido: {value!r} (use HH:MM)")
+    hours, minutes = int(m.group(1)), int(m.group(2) or 0)
+    if not (0 <= hours <= 23 and 0 <= minutes <= 59):
+        raise ValueError(f"Horário fora do intervalo: {value!r}")
+    return f"{hours:02d}:{minutes:02d}"
+
+
+# ------------------------------------------------------------------ planning
 def tool_get_pending_orders(cd_id: str) -> list[dict[str, Any]]:
     """Fetches all delivery orders currently waiting at the CD staging area."""
     return get_wms_service().get_pending_orders(cd_id)
@@ -39,3 +64,124 @@ def tool_confirm_dispatch(manifest_id: str, cd_id: str) -> dict[str, Any]:
         "cd_id": cd_id,
         "message": "Ordem de carregamento e manifesto eletrônico emitidos com sucesso.",
     }
+
+
+# ------------------------------------------------------- operator (copilot)
+def _unique_by_score(candidates: list[dict[str, Any]]) -> dict[str, Any] | None:
+    best = candidates[0]
+    if len(candidates) == 1:
+        return best
+    gap = best["match_score"] - candidates[1]["match_score"]
+    if (best["match_score"] >= 0.9 and gap >= 0.1) or (best["match_score"] >= 0.8 and gap >= 0.2):
+        return best
+    return None
+
+
+def _disambiguate_with_message(candidates: list[dict[str, Any]], message: str) -> dict[str, Any] | None:
+    """Pick the candidate whose distinguishing tokens (store, neighbourhood, city) appear in the sentence."""
+    if not message:
+        return None
+    words = set(normalize_text(message).split())
+    token_sets = [
+        {t for t in normalize_text(f"{c['customer_name']} {c['neighborhood']} {c['city']}").split() if len(t) > 2}
+        for c in candidates
+    ]
+    shared = set.intersection(*token_sets) if token_sets else set()
+    hits = [len((tokens - shared) & words) for tokens in token_sets]
+    best = max(hits)
+    if best == 0 or hits.count(best) != 1:
+        return None
+    return candidates[hits.index(best)]
+
+
+def _resolve_customer(customer: str) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
+    """
+    Return (unique match, candidates). A match is unique when it clearly outranks the runner-up,
+    or when the operator's full sentence singles one candidate out.
+    """
+    candidates = get_repository().find_customers(customer, limit=5)
+    if not candidates:
+        return None, []
+    match = _unique_by_score(candidates) or _disambiguate_with_message(candidates, operator_message.get())
+    return match, candidates
+
+
+def tool_find_customers(query: str) -> list[dict[str, Any]]:
+    """Searches customers by name, code, neighbourhood or city; returns candidates with today's order counts."""
+    return get_repository().find_customers(query, limit=5)
+
+
+def tool_skip_customer_today(customer: str, reason: str = "Solicitado pelo despachante") -> dict[str, Any]:
+    """Removes a customer's pending orders from today's plan (they stay in the WMS as SKIPPED)."""
+    match, candidates = _resolve_customer(customer)
+    if match is None:
+        return {"status": "AMBIGUOUS" if candidates else "NOT_FOUND", "query": customer, "candidates": candidates}
+    orders = get_repository().skip_customer_orders(match["customer_id"], reason)
+    get_repository().add_operator_memory("SKIP", f"{match['customer_name']}: não atender hoje ({reason}).")
+    return {
+        "status": "OK" if orders else "NO_PENDING_ORDERS",
+        "customer": match["customer_name"],
+        "skipped_orders": orders,
+        "reason": reason,
+    }
+
+
+def tool_restore_customer_today(customer: str) -> dict[str, Any]:
+    """Puts a customer's previously skipped orders back into today's plan."""
+    match, candidates = _resolve_customer(customer)
+    if match is None:
+        return {"status": "AMBIGUOUS" if candidates else "NOT_FOUND", "query": customer, "candidates": candidates}
+    orders = get_repository().restore_customer_orders(match["customer_id"])
+    return {"status": "OK" if orders else "NOTHING_TO_RESTORE", "customer": match["customer_name"], "orders": orders}
+
+
+def tool_reschedule_customer_window(
+    customer: str, window_start: str, window_end: str, remember: bool = True
+) -> dict[str, Any]:
+    """Sets the receiving window (HH:MM-HH:MM) of a customer's orders today; `remember` keeps it for future orders."""
+    match, candidates = _resolve_customer(customer)
+    if match is None:
+        return {"status": "AMBIGUOUS" if candidates else "NOT_FOUND", "query": customer, "candidates": candidates}
+    try:
+        start, end = normalize_clock(window_start), normalize_clock(window_end)
+    except ValueError as exc:
+        return {"status": "INVALID_WINDOW", "detail": str(exc)}
+    if start >= end:
+        return {"status": "INVALID_WINDOW", "detail": f"Janela inválida: início {start} deve ser antes do fim {end}."}
+    repo = get_repository()
+    orders = repo.reschedule_customer_window(match["customer_id"], start, end, remember=remember)
+    if remember:
+        repo.add_operator_memory("WINDOW", f"{match['customer_name']}: recebe entre {start} e {end}.")
+        repo.add_customer_rule(
+            match["customer_name"], "DOCK_WINDOW", f"Recebimento agendado entre {start} e {end}.", priority="HIGH"
+        )
+    return {
+        "status": "OK",
+        "customer": match["customer_name"],
+        "window": f"{start} - {end}",
+        "orders_updated": orders,
+        "remembered": remember,
+    }
+
+
+def tool_list_orders(status: str = "PENDING") -> list[dict[str, Any]]:
+    """Lists today's orders by status (PENDING, SKIPPED or DISPATCHED) with customer, window and weight."""
+    rows = get_repository().get_orders_by_status(status.upper(), settings.default_cd_id)
+    return [
+        {
+            "order_id": o["order_id"],
+            "customer": o["customer_name"],
+            "city": o["city"],
+            "window": f"{o['window_start']} - {o['window_end']}",
+            "weight_kg": o["weight_kg"],
+            "status": o["status"],
+            "skip_reason": o.get("skip_reason"),
+        }
+        for o in rows
+    ]
+
+
+def tool_remember_note(note: str) -> dict[str, Any]:
+    """Stores a standing instruction from the dispatcher in long-term memory."""
+    get_repository().add_operator_memory("NOTE", note)
+    return {"status": "OK", "note": note}

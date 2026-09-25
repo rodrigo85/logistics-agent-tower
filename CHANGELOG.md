@@ -6,6 +6,22 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-09-25
+
+### Added
+- **Dispatcher Copilot**: conversational LLM agent (LangGraph tool-calling loop) that applies operator instructions to today's plan and re-plans: "não vamos atender X hoje" (skip), "X agendou recebimento entre 9 e 11" (reschedule window, remembered for future orders), restore, questions about the plan and standing notes. Exposed as `POST /copilot/chat`, `GET /copilot/status`, a chat panel in the dashboard and the `logistics-tower-chat` CLI (ADR-0007).
+- LLM provider factory (`llm/provider.py`): Ollama (default), Gemini and OpenAI behind optional extras, with a diagnostics endpoint that never exposes secrets.
+- Operator tools registered in MCP (in-process and stdio server): `find_customers`, `skip_customer_today`, `restore_customer_today`, `reschedule_customer_window`, `list_orders`, `remember_note`.
+- Long-term memory: `operator_memory` table, customer window overrides honoured by the order factory, customer rules written from the chat.
+- `GET /agents` registry (planning agents, copilot, MCP tools, latest plan) as a lifecycle view.
+- Evaluation harness `evals/run_evals.py` + `evals/cases.jsonl` scoring tool/entity/replan accuracy and latency per provider; `make eval`; `docs/LLM_EVALUATION.md`.
+- Tests with a scripted tool-calling model covering skip, reschedule, restore, ambiguity, memory, the API and the MCP server tool listing through the official SDK.
+
+### Changed
+- Order status gains `SKIPPED` (+ `skip_reason`); re-planning only brings `DISPATCHED` orders back, so skipped customers stay out until restored.
+- Dispatch planning extracted to `services/dispatch_service.py` (shared by API, CLI and copilot); the latest-plan cache now also carries unallocated orders, warnings and the thread id.
+- `/api/dashboard-data` exposes skipped orders and the latest plan status.
+
 ## [1.2.0] - 2026-09-24
 
 ### Changed
@@ -65,7 +81,8 @@ All notable changes to this project are documented here. The format follows
 - FastAPI REST API, interactive Leaflet dashboard, Rich CLI, MCP server and client.
 - Terraform for GCP (Cloud Run, Cloud SQL, Artifact Registry, BigQuery, Secret Manager).
 
-[Unreleased]: https://github.com/rodrigo85/logistics-agent-tower/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/rodrigo85/logistics-agent-tower/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/rodrigo85/logistics-agent-tower/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/rodrigo85/logistics-agent-tower/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/rodrigo85/logistics-agent-tower/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/rodrigo85/logistics-agent-tower/releases/tag/v1.0.0

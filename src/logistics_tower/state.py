@@ -129,6 +129,7 @@ class LogisticsAgentState(TypedDict):
     risk_warnings: list[RiskWarning]
 
     # Human-in-the-Loop (HITL) gate
+    auto_approve: bool  # request-level bypass (pipelines, evals); HITL_AUTO_APPROVE is the global one
     requires_human_approval: bool
     human_approval_reason: str
     human_verdict: str | None  # "APPROVED", "REJECTED", "OVERRIDE"

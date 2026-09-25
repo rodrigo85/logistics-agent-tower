@@ -11,7 +11,7 @@ endif
 
 .DEFAULT_GOAL := help
 
-.PHONY: help venv install seed run cli mcp test test-all cov lint format typecheck check clean docker-build docker-up docker-down
+.PHONY: help venv install seed run cli chat mcp test test-all cov eval lint format typecheck check clean docker-build docker-up docker-down
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
@@ -21,7 +21,7 @@ venv: ## Create the virtual environment
 
 install: ## Install the package in editable mode with dev extras + pre-commit hooks
 	$(VENV_PY) -m pip install --upgrade pip
-	$(VENV_PY) -m pip install -e ".[dev,mcp]"
+	$(VENV_PY) -m pip install -e ".[dev,mcp,ollama]"
 	$(VENV_PY) -m pre_commit install || true
 
 seed: ## Reset and seed the local database
@@ -33,6 +33,9 @@ run: ## Start the API + dashboard with auto-reload
 cli: ## Run the interactive terminal dispatcher
 	$(VENV_PY) -m logistics_tower.cli
 
+chat: ## Talk to the Dispatcher Copilot in the terminal (needs an LLM provider)
+	$(VENV_PY) -m logistics_tower.chat_cli
+
 mcp: ## Run the MCP server over stdio
 	$(VENV_PY) -m logistics_tower.mcp.server
 
@@ -42,15 +45,18 @@ test: ## Run unit tests (external integrations skipped)
 test-all: ## Run every test, including Google Maps integration (needs GOOGLE_MAPS_API_KEY)
 	$(VENV_PY) -m pytest
 
+eval: ## Evaluate the copilot against the configured LLM provider (see docs/LLM_EVALUATION.md)
+	$(VENV_PY) evals/run_evals.py --provider $${LLM_PROVIDER:-ollama}
+
 cov: ## Run tests with coverage report
 	$(VENV_PY) -m pytest -m "not integration" --cov --cov-report=term-missing --cov-report=xml
 
 lint: ## Lint with ruff
-	$(VENV_PY) -m ruff check src tests
+	$(VENV_PY) -m ruff check src tests evals
 
 format: ## Auto-format and auto-fix with ruff
-	$(VENV_PY) -m ruff check --fix src tests
-	$(VENV_PY) -m ruff format src tests
+	$(VENV_PY) -m ruff check --fix src tests evals
+	$(VENV_PY) -m ruff format src tests evals
 
 typecheck: ## Static type check with mypy
 	$(VENV_PY) -m mypy

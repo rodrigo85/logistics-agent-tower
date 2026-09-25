@@ -34,6 +34,7 @@ O projeto automatiza esse ciclo de ponta a ponta:
 3. **Agente de Risco** audita sobrecarga, janelas perdidas, limite de jornada, pedidos sem veículo e cargas de alto valor.
 4. **Gate Human-in-the-Loop** pausa a execução do LangGraph e aguarda o veredito `APPROVED` / `REJECTED` via API, dashboard ou CLI.
 5. **Supervisor** emite o manifesto eletrônico de despacho e o persiste em SQL.
+6. **Copiloto do Despachante** (LLM) recebe instruções como *"não vamos atender o Bistek da Fazenda hoje"* ou *"a Padaria Praia Brava agendou recebimento entre 9 e 11"*, aplica-as via tools MCP e replaneja.
 
 ## Destaques
 
@@ -41,7 +42,8 @@ O projeto automatiza esse ciclo de ponta a ponta:
 |------------|---------------|
 | Orquestração multiagente com pausa/retomada | LangGraph `StateGraph` + `interrupt()` + checkpointer; threads retomadas entre requisições HTTP |
 | Otimização combinatória | Clusterização por varredura + OR-Tools TSPTW (Guided Local Search) com tempos por haversine ou Google Routes API v2 |
-| Fronteira de ferramentas | Model Context Protocol: as mesmas tools expostas in-process aos agentes e via stdio a clientes de IA externos |
+| Fronteira de ferramentas | Model Context Protocol: as mesmas tools expostas in-process aos agentes, via stdio a clientes de IA externos e vinculadas ao LLM do copiloto |
+| Agente conversacional | Loop de tool calling em LangGraph com memória de curto prazo (thread) e longo prazo (SQL); fábrica de provedores Ollama / Gemini / OpenAI; harness de avaliação por provedor |
 | Persistência | SQLAlchemy 2.0, SQLite local, PostgreSQL 16 em Docker/Cloud SQL, seeder idempotente com 56 clientes regionais |
 | Experiência do operador | Dashboard FastAPI + Leaflet com mapa, itinerários e controles HITL; CLI em Rich |
 | Higiene de engenharia | CI em Ubuntu + Windows, ruff, mypy, pytest com cobertura, pre-commit, Dependabot, ADRs |
@@ -132,6 +134,20 @@ curl -X POST http://localhost:8000/dispatch/resume -H "content-type: application
 
 Opcional: defina `GOOGLE_MAPS_API_KEY` no `.env` para trocar a estimativa haversine por roteirização com tráfego ao vivo.
 
+### Conversando com o copiloto
+
+```bash
+# precisa de um modelo com tool calling: ollama pull qwen2.5:7b  (LLM_PROVIDER=ollama é o padrão)
+curl -X POST http://localhost:8000/copilot/chat -H "content-type: application/json" \
+     -d '{"message":"Não vamos atender o Supermercado Bistek - Fazenda hoje"}'
+# -> {"reply":"...","actions":[{"tool":"skip_customer_today",...},{"tool":"replan_dispatch",...}],"replanned":true}
+
+curl -X POST http://localhost:8000/copilot/chat -H "content-type: application/json" \
+     -d '{"message":"A Padaria & Confeitaria Praia Brava agendou recebimento entre 9 e 11"}'
+```
+
+A mesma caixa de texto existe no dashboard (coluna da direita) e no terminal: `logistics-tower-chat`.
+
 ## Regras de negócio modeladas
 
 * **Somente cadeia fria:** cinco caminhões frigoríficos (2 VUC, 2 Toco, 1 Truck); todo pedido é resfriado (0-4 °C) ou congelado (-18 °C).
@@ -151,6 +167,8 @@ Opcional: defina `GOOGLE_MAPS_API_KEY` no `.env` para trocar a estimativa havers
 | `POST` | `/dispatch/resume` | Retoma uma thread pausada com `APPROVED` / `REJECTED` / `OVERRIDE` |
 | `GET` | `/dispatch/{thread_id}` | Estado atual de uma thread de planejamento |
 | `POST` | `/api/orders/generate?count=N` | Substitui os pedidos pendentes por N pedidos refrigerados (padrão 40, um por cliente) |
+| `POST` | `/copilot/chat` | Instrução do operador em linguagem natural; aplica exclusões / reagendamentos e replaneja |
+| `GET` | `/copilot/status` · `/agents` | Disponibilidade do provedor LLM, tools do copiloto, registro de agentes |
 | `GET` | `/api/vehicle/{placa}/itinerary` | Itinerário diário passo a passo de um veículo |
 | `GET` | `/api/dashboard-data` | Frota, pedidos e últimas rotas para o mapa |
 | `GET` | `/api/traffic/status` · `/api/traffic/route` | Status da integração Google Maps e rotas com tráfego |
@@ -162,7 +180,8 @@ Opcional: defina `GOOGLE_MAPS_API_KEY` no `.env` para trocar a estimativa havers
 ```text
 .
 ├── src/logistics_tower/
-│   ├── agents/          # supervisor, frota, roteirização, risco (nós LangGraph)
+│   ├── agents/          # supervisor, frota, roteirização, risco (nós LangGraph) + copiloto (LLM com tool calling)
+│   ├── llm/             # fábrica de provedores: Ollama, Gemini, OpenAI
 │   ├── api/             # app factory, routers por contexto, schemas, template do dashboard
 │   ├── db/              # modelos SQLAlchemy, repositório, seeder idempotente, pool de clientes, fábrica de pedidos
 │   ├── mcp/             # tools MCP, cliente in-process, servidor stdio
@@ -173,6 +192,7 @@ Opcional: defina `GOOGLE_MAPS_API_KEY` no `.env` para trocar a estimativa havers
 │   ├── config.py        # configurações 12-factor
 │   └── cli.py           # despachante em terminal (Rich)
 ├── tests/               # suíte pytest (unitários + integração opcional)
+├── evals/               # casos e runner de avaliação de LLMs (make eval)
 ├── docs/                # ARCHITECTURE.md, ADRs
 ├── docker/              # Dockerfile multi-stage
 ├── infra/terraform/gcp/ # Cloud Run, Cloud SQL, Artifact Registry, BigQuery, Secret Manager
@@ -204,6 +224,7 @@ Copie `.env.example` para `.env`. As variáveis mais relevantes:
 |----------|--------|--------|
 | `DATABASE_URL` | *(vazio → SQLite)* | Qualquer URL SQLAlchemy, ex.: `postgresql+psycopg://…` |
 | `GOOGLE_MAPS_API_KEY` | *(vazio)* | Habilita tráfego ao vivo via Routes API v2 |
+| `LLM_PROVIDER` | `ollama` | Backend do copiloto: `ollama` (`OLLAMA_MODEL`), `gemini` (`GOOGLE_API_KEY`), `openai` (`OPENAI_API_KEY`) |
 | `HITL_AUTO_APPROVE` | `false` | Pula o gate humano (pipelines, demos) |
 | `MAX_STOPS_PER_VEHICLE` | `12` | Entregas por rota |
 | `DOCK_START_TIME` | `05:00` | Início do carregamento; saída uma hora depois |
@@ -219,7 +240,8 @@ Copie `.env.example` para `.env`. As variáveis mais relevantes:
 
 ## Roadmap
 
-- [ ] Nó com LLM (Gemini / OpenAI / Ollama via `LLM_PROVIDER`) que explica os riscos ao despachante
+- [x] Copiloto com LLM que aplica instruções do despachante e replaneja (v1.3.0)
+- [ ] Respostas em streaming e entrada por voz no dashboard
 - [ ] CVRP multiveículo no OR-Tools (rebalanceamento global entre caminhões) e almoço modelado como pausa do solver
 - [ ] Checkpointer `PostgresSaver` para deploy com múltiplas instâncias
 - [ ] Migrações com Alembic
@@ -228,7 +250,7 @@ Copie `.env.example` para `.env`. As variáveis mais relevantes:
 
 ## Documentação
 
-* [Arquitetura](docs/ARCHITECTURE.md) · [ADRs](docs/adr/README.md) · [Contribuindo](CONTRIBUTING.md) · [Changelog](CHANGELOG.md) · [Segurança](SECURITY.md)
+* [Arquitetura](docs/ARCHITECTURE.md) · [ADRs](docs/adr/README.md) · [Avaliação de LLMs](docs/LLM_EVALUATION.md) · [Contribuindo](CONTRIBUTING.md) · [Changelog](CHANGELOG.md) · [Segurança](SECURITY.md)
 
 ## Licença
 

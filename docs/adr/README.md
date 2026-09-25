@@ -11,5 +11,6 @@ Short, dated records of decisions that are expensive to reverse. Format follows
 | [0004](0004-dedicated-ftl-multi-trip.md) | Dedicated full-truckload, multi-trip allocation model | Superseded by 0006 |
 | [0005](0005-sqlalchemy-sqlite-postgres.md) | SQLAlchemy 2.0 with SQLite locally and PostgreSQL in production | Accepted |
 | [0006](0006-refrigerated-multi-drop-single-route.md) | Refrigerated multi-drop routes, one route per vehicle per day | Accepted |
+| [0007](0007-dispatcher-copilot-llm.md) | Dispatcher Copilot: an LLM agent that edits today's plan through tools | Accepted |
 
 To add one: copy the newest file, bump the number, set status *Proposed*, open a PR.

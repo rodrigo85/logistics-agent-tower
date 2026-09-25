@@ -28,6 +28,7 @@ coverage.xml
 htmlcov/
 
 # --- Local data & runtime artifacts -----------------------------------------
+evals/results/*.json
 # The SQLite database is created and seeded automatically on first run.
 data/*.db
 data/*.db-journal
