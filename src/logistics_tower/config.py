@@ -9,7 +9,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, SecretStr
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _DEFAULT_APP_ROOT = Path(__file__).resolve().parents[2]
@@ -74,6 +74,28 @@ class Settings(BaseSettings):
     # --- API server ----------------------------------------------------------
     api_host: str = "0.0.0.0"
     api_port: int = 8000
+
+    @field_validator("llm_provider", mode="before")
+    @classmethod
+    def _normalise_provider(cls, value: object) -> str:
+        """Accept common aliases so a typo in .env does not take the whole app down."""
+        aliases = {
+            "ollama": "ollama",
+            "llama": "ollama",
+            "local": "ollama",
+            "gemini": "gemini",
+            "google": "gemini",
+            "vertex": "gemini",
+            "openai": "openai",
+            "gpt": "openai",
+            "chatgpt": "openai",
+        }
+        key = str(value).strip().lower()
+        if key not in aliases:
+            raise ValueError(
+                f"LLM_PROVIDER={value!r} is not supported. Use ollama (local, OLLAMA_MODEL=...), gemini or openai."
+            )
+        return aliases[key]
 
     # --- Derived paths -------------------------------------------------------
     @property
