@@ -65,5 +65,10 @@ def list_agents() -> AgentsResponse:
         ],
         mcp_tools=[t["name"] for t in get_mcp_client().list_tools()],
         copilot_tools=[t.name for t in build_tools()],
-        latest_plan={"thread_id": planner.latest.thread_id, "status": planner.latest.status},
+        latest_plan={
+            "plan_date": planner.latest.plan_date.isoformat(),
+            "thread_id": planner.latest.thread_id,
+            "status": planner.latest.status,
+        },
+        horizon=planner.horizon(),
     )

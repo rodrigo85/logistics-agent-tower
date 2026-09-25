@@ -14,14 +14,15 @@ from sqlalchemy import inspect
 from sqlalchemy.orm import Session
 
 from logistics_tower.config import settings
+from logistics_tower.dates import planning_days, today
 from logistics_tower.db.address_pool import REGIONAL_CUSTOMERS_POOL
 from logistics_tower.db.models import Base, Customer, CustomerRule, Order, Vehicle
-from logistics_tower.db.order_factory import build_orders
+from logistics_tower.db.order_factory import build_orders_for_days
 from logistics_tower.db.session import SessionLocal, engine, init_db
 
 logger = logging.getLogger(__name__)
 
-SEED_ORDER_COUNT = 40
+SEED_ORDER_COUNT = 40  # per delivery day
 SEED_RNG = 2026
 SEED_ORDER_PREFIX = "2026"
 
@@ -169,11 +170,12 @@ def _customer_for_factory(c: Customer) -> dict[str, Any]:
 
 
 def _orders_need_reseed(db: Session, force: bool) -> bool:
+    """Reseed when forced, when today has no orders at all (dataset rolled past its dates) or when data is inconsistent."""
     if force:
         return True
-    pending = db.query(Order).filter(Order.status == "PENDING").count()
+    orders_today = db.query(Order).filter(Order.delivery_date == today()).count()
     non_refrigerated = db.query(Order).filter(Order.cargo_type != "refrigerated").count()
-    return pending == 0 or non_refrigerated > 0
+    return orders_today == 0 or non_refrigerated > 0
 
 
 def _seed_orders(db: Session, cd_id: str) -> int:
@@ -181,7 +183,9 @@ def _seed_orders(db: Session, cd_id: str) -> int:
     db.commit()
     customers = [_customer_for_factory(c) for c in db.query(Customer).order_by(Customer.code).all()]
     rng = random.Random(SEED_RNG)
-    orders = build_orders(customers, SEED_ORDER_COUNT, rng, cd_id=cd_id, prefix=SEED_ORDER_PREFIX)
+    orders = build_orders_for_days(
+        customers, SEED_ORDER_COUNT, rng, cd_id=cd_id, days=planning_days(), prefix=SEED_ORDER_PREFIX
+    )
     for o in orders:
         db.add(Order(**o))
     db.commit()
@@ -199,10 +203,12 @@ def seed_database(force_reseed: bool = False) -> None:
             count = _seed_orders(db, settings.default_cd_id)
             total_cust = db.query(Customer).count()
             logger.info(
-                "Database seeded: %s customers, %s refrigerated trucks, %s pending orders.",
+                "Database seeded: %s customers, %s refrigerated trucks, %s orders over %s days from %s.",
                 total_cust,
                 len(FLEET_SEED_DATA),
                 count,
+                settings.planning_horizon_days,
+                today().isoformat(),
             )
     except Exception:
         db.rollback()

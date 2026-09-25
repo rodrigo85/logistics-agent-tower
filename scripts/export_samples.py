@@ -12,7 +12,8 @@ from pathlib import Path
 
 from logistics_tower.config import settings
 from logistics_tower.db.address_pool import REGIONAL_CUSTOMERS_POOL
-from logistics_tower.db.order_factory import build_orders
+from logistics_tower.dates import planning_days
+from logistics_tower.db.order_factory import build_orders_for_days
 from logistics_tower.db.seed import FLEET_SEED_DATA, SEED_ORDER_COUNT, SEED_ORDER_PREFIX, SEED_RNG
 
 SAMPLES_DIR = Path(__file__).resolve().parents[1] / "data" / "samples"
@@ -25,11 +26,14 @@ def main() -> None:
     by_id = {c["id"]: c for c in customers}
     rng = random.Random(SEED_RNG)
     orders = []
-    for o in build_orders(customers, SEED_ORDER_COUNT, rng, cd_id=settings.default_cd_id, prefix=SEED_ORDER_PREFIX):
+    for o in build_orders_for_days(
+        customers, SEED_ORDER_COUNT, rng, cd_id=settings.default_cd_id, days=planning_days(), prefix=SEED_ORDER_PREFIX
+    ):
         c = by_id[o["customer_id"]]
         orders.append(
             {
                 "order_id": o["order_number"],
+                "delivery_date": o["delivery_date"].isoformat(),
                 "customer_code": c["code"],
                 "customer_name": c["name"],
                 "segment": c["segment"],

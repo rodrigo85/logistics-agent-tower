@@ -34,7 +34,7 @@ O projeto automatiza esse ciclo de ponta a ponta:
 3. **Agente de Risco** audita sobrecarga, janelas perdidas, limite de jornada, pedidos sem veículo e cargas de alto valor.
 4. **Gate Human-in-the-Loop** pausa a execução do LangGraph e aguarda o veredito `APPROVED` / `REJECTED` via API, dashboard ou CLI.
 5. **Supervisor** emite o manifesto eletrônico de despacho e o persiste em SQL.
-6. **Copiloto do Despachante** (LLM) recebe instruções como *"não vamos atender o Bistek da Fazenda hoje"* ou *"a Padaria Praia Brava agendou recebimento entre 9 e 11"*, aplica-as via tools MCP e replaneja.
+6. **Copiloto do Despachante** (LLM) recebe instruções como *"não vamos atender o Bistek da Fazenda hoje"*, *"passa o Koch de Gravatá para amanhã"* ou *"a Padaria Praia Brava agendou sexta entre 9 e 11"*, aplica-as via tools MCP e replaneja cada dia afetado.
 
 ## Destaques
 
@@ -144,6 +144,10 @@ curl -X POST http://localhost:8000/copilot/chat -H "content-type: application/js
 
 curl -X POST http://localhost:8000/copilot/chat -H "content-type: application/json" \
      -d '{"message":"A Padaria & Confeitaria Praia Brava agendou recebimento entre 9 e 11"}'
+
+curl -X POST http://localhost:8000/copilot/chat -H "content-type: application/json" \
+     -d '{"message":"Passa o Komprão Koch de Gravatá para amanhã"}'
+# -> replaneja hoje e amanhã; as abas de data do dashboard mostram os dois
 ```
 
 A mesma caixa de texto existe no dashboard (coluna da direita) e no terminal: `logistics-tower-chat`.
@@ -152,6 +156,7 @@ A mesma caixa de texto existe no dashboard (coluna da direita) e no terminal: `l
 
 * **Somente cadeia fria:** cinco caminhões frigoríficos (2 VUC, 2 Toco, 1 Truck); todo pedido é resfriado (0-4 °C) ou congelado (-18 °C).
 * **Clientes do varejo alimentar:** 56 supermercados, atacadistas, mercearias, minimercados, padarias, açougues, peixarias, hortifrutis e conveniências em sete cidades, cada um com janela de recebimento e perfil de doca próprios.
+* **Horizonte de 3 dias:** todo pedido tem data de entrega; o WMS mantém hoje e os dois dias seguintes (40 pedidos por dia) e cada plano é por dia.
 * **Uma rota por caminhão por dia:** carregamento 05:00-06:00, saída às 06:00, até 12 paradas, 20 minutos por parada, retorno ao CD. Sem segunda viagem.
 * **Paradas próximas viajam juntas:** varredura em duas passagens por ângulo em torno do CD com refinamento por centróide e, dentro da rota, sequenciamento pelo OR-Tools.
 * **Nunca sobrecarrega:** peso e volume com teto rígido de 100%; pedidos que não cabem ficam pendentes e são reportados.
@@ -163,14 +168,14 @@ A mesma caixa de texto existe no dashboard (coluna da direita) e no terminal: `l
 
 | Método | Rota | Finalidade |
 |--------|------|------------|
-| `POST` | `/dispatch/plan` | Executa os agentes; retorna `COMPLETED` ou `AWAITING_HUMAN_APPROVAL` |
+| `POST` | `/dispatch/plan` | Executa os agentes para uma data de entrega (`plan_date`, padrão hoje); retorna `COMPLETED` ou `AWAITING_HUMAN_APPROVAL` |
 | `POST` | `/dispatch/resume` | Retoma uma thread pausada com `APPROVED` / `REJECTED` / `OVERRIDE` |
 | `GET` | `/dispatch/{thread_id}` | Estado atual de uma thread de planejamento |
-| `POST` | `/api/orders/generate?count=N` | Substitui os pedidos pendentes por N pedidos refrigerados (padrão 40, um por cliente) |
+| `POST` | `/api/orders/generate?count=N&days=D` | Substitui o horizonte por N pedidos refrigerados por dia durante D dias seguidos (padrão 40 x 3) |
 | `POST` | `/copilot/chat` | Instrução do operador em linguagem natural; aplica exclusões / reagendamentos e replaneja |
 | `GET` | `/copilot/status` · `/agents` | Disponibilidade do provedor LLM, tools do copiloto, registro de agentes |
 | `GET` | `/api/vehicle/{placa}/itinerary` | Itinerário diário passo a passo de um veículo |
-| `GET` | `/api/dashboard-data` | Frota, pedidos e últimas rotas para o mapa |
+| `GET` | `/api/dashboard-data?date=` | Frota, pedidos de um dia e suas últimas rotas para o mapa, mais o horizonte |
 | `GET` | `/api/traffic/status` · `/api/traffic/route` | Status da integração Google Maps e rotas com tráfego |
 | `GET` | `/mcp/tools` | Tools expostas aos agentes via MCP |
 | `GET` | `/health` | Liveness, versão, ambiente |
@@ -226,6 +231,7 @@ Copie `.env.example` para `.env`. As variáveis mais relevantes:
 | `GOOGLE_MAPS_API_KEY` | *(vazio)* | Habilita tráfego ao vivo via Routes API v2 |
 | `LLM_PROVIDER` | `ollama` | Backend do copiloto: `ollama` (`OLLAMA_MODEL`), `gemini` (`GOOGLE_API_KEY`), `openai` (`OPENAI_API_KEY`) |
 | `HITL_AUTO_APPROVE` | `false` | Pula o gate humano (pipelines, demos) |
+| `PLANNING_HORIZON_DAYS` | `3` | Dias de pedidos mantidos e gerados (hoje + próximos) |
 | `MAX_STOPS_PER_VEHICLE` | `12` | Entregas por rota |
 | `DOCK_START_TIME` | `05:00` | Início do carregamento; saída uma hora depois |
 | `MAX_WEIGHT_THRESHOLD_PERCENT` | `100.0` | Ocupação acima da qual o agente de risco sinaliza sobrecarga |

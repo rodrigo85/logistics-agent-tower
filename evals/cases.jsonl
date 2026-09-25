@@ -8,3 +8,6 @@
 {"id": "question-plan", "category": "question", "message": "Quantas rotas temos hoje e quais paradas estão atrasadas?", "expected_tools": ["get_plan_summary"], "expect_replan": false}
 {"id": "question-orders", "category": "question", "message": "Liste os pedidos que ficaram fora do plano de hoje.", "expected_tools": ["list_orders", "get_plan_summary"], "any_of_tools": true, "expect_replan": false}
 {"id": "note", "category": "memory", "message": "Lembre que o Komprão de Cordeiros exige nota fiscal impressa na descarga.", "expected_tools": ["remember_note"], "expect_replan": false}
+{"id": "move-tomorrow", "category": "move", "message": "Passa o Komprão Koch de Gravatá para amanhã.", "expected_tools": ["move_customer_orders"], "expect_customer": "Komprão Koch Atacadista - Gravatá", "expect_replan": true}
+{"id": "skip-tomorrow", "category": "skip", "message": "Amanhã não vamos atender o Supermercado Bistek - Cidade Nova.", "expected_tools": ["skip_customer_today"], "expect_customer": "Supermercado Bistek - Cidade Nova", "expect_date_offset": 1, "expect_replan": true}
+{"id": "question-tomorrow", "category": "question", "message": "Quantos pedidos temos para amanhã?", "expected_tools": ["list_orders", "get_plan_summary"], "any_of_tools": true, "expect_replan": false}

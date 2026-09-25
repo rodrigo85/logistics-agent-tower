@@ -25,7 +25,8 @@ def fleet_agent_node(state: LogisticsAgentState) -> dict[str, Any]:
     cd_id = state.get("cd_id", settings.default_cd_id)
     mcp = get_mcp_client()
 
-    orders = state.get("raw_orders") or mcp.call_tool("get_pending_orders", cd_id=cd_id)
+    plan_date = state.get("plan_date")
+    orders = state.get("raw_orders") or mcp.call_tool("get_pending_orders", cd_id=cd_id, delivery_date=plan_date)
     fleet = state.get("available_fleet") or mcp.call_tool("get_available_fleet", cd_id=cd_id)
     customer_rules = state.get("customer_rules", [])
 

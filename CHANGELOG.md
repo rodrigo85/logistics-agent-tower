@@ -6,6 +6,18 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-09-25
+
+### Added
+- **Delivery dates.** Every order has a `delivery_date`; the WMS keeps a rolling horizon of `PLANNING_HORIZON_DAYS` (3) days and "Gerar pedidos" fills all of them (40 orders per day). The seed regenerates itself when today has no orders.
+- Planning per day: `POST /dispatch/plan` takes `plan_date`; the dashboard has date tabs (hoje / amanhã / day after) with order counts and plan status; `/api/dashboard-data?date=` and `/api/orders/generate?days=`.
+- Copilot understands dates in the operator's words ("hoje", "amanhã", "quinta", "27/09", ISO): every operator tool takes a `date`; new `move_customer_orders` tool ("passa o Koch de Gravatá para amanhã"); the copilot re-plans every day it touched (origin and destination when moving).
+- `logistics_tower.dates` (tolerant date parser, horizon, labels) with tests; `REFERENCE_DATE` setting to freeze "today" for demos.
+- Eval cases for dates (move to tomorrow, skip tomorrow, question about tomorrow).
+
+### Changed
+- Repository, WMS, planner cache and manifests are date-scoped; `GET /api/vehicle/{plate}/itinerary` reads the most recently planned day.
+
 ## [1.3.0] - 2026-09-25
 
 ### Added
@@ -81,7 +93,8 @@ All notable changes to this project are documented here. The format follows
 - FastAPI REST API, interactive Leaflet dashboard, Rich CLI, MCP server and client.
 - Terraform for GCP (Cloud Run, Cloud SQL, Artifact Registry, BigQuery, Secret Manager).
 
-[Unreleased]: https://github.com/rodrigo85/logistics-agent-tower/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/rodrigo85/logistics-agent-tower/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/rodrigo85/logistics-agent-tower/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/rodrigo85/logistics-agent-tower/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/rodrigo85/logistics-agent-tower/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/rodrigo85/logistics-agent-tower/compare/v1.0.0...v1.1.0

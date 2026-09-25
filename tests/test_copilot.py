@@ -48,10 +48,21 @@ class ScriptedChatModel(BaseChatModel):
         text = str(last.content)
         low = text.lower()
 
+        m = re.search(
+            r"^(amanhã|amanha|hoje|quinta|sexta) não vamos atender (?:o |a )?(.+?)\.?$", text, flags=re.IGNORECASE
+        )
+        if m:
+            return self._tool(
+                "skip_customer_today",
+                {"customer": m.group(2).strip(), "reason": "Solicitado pelo despachante", "date": m.group(1)},
+            )
         m = re.search(r"não vamos atender (?:o |a )?(.+?) hoje", low)
         if m:
             customer = text[m.start(1) : m.end(1)]
             return self._tool("skip_customer_today", {"customer": customer, "reason": "Solicitado pelo despachante"})
+        m = re.search(r"passa (?:o |a )?(.+?) para (\S+)", text, flags=re.IGNORECASE)
+        if m:
+            return self._tool("move_customer_orders", {"customer": m.group(1).strip(), "to_date": m.group(2)})
         m = re.search(r"(.+?) agendou recebimento entre (\S+) e (\S+)", text, flags=re.IGNORECASE)
         if m:
             return self._tool(
@@ -263,3 +274,55 @@ def test_skip_after_approved_plan_still_removes_customer(copilot):
     assert action["result"]["status"] == "OK"
     planned = {c for r in get_dispatch_planner().summary()["routes"] for c in r["customers"]}
     assert customer not in planned
+
+
+def _customer_with_order_on(offset: int) -> str:
+    from datetime import timedelta
+
+    from logistics_tower.dates import today
+
+    day = today() + timedelta(days=offset)
+    return get_repository().get_pending_orders(settings.default_cd_id, delivery_date=day)[0]["customer_name"]
+
+
+def test_copilot_moves_customer_to_tomorrow_and_replans_both_days(copilot):
+    from datetime import timedelta
+
+    from logistics_tower.dates import today
+
+    customer = _customer_with_pending_order()
+    tomorrow = today() + timedelta(days=1)
+
+    result = copilot.chat(f"Passa {customer} para amanhã", thread_id="t-move")
+
+    action = next(a for a in result["actions"] if a["tool"] == "move_customer_orders")
+    assert action["result"]["status"] == "OK"
+    assert action["result"]["to_date"] == tomorrow.isoformat()
+    replanned = {d["plan_date"] for d in result["dispatches"]}
+    assert replanned == {today().isoformat(), tomorrow.isoformat()}
+
+    repo = get_repository()
+    assert customer not in {o["customer_name"] for o in repo.get_pending_orders(settings.default_cd_id)}
+    assert customer in {o["customer_name"] for o in repo.get_pending_orders(settings.default_cd_id, tomorrow)}
+    planned_tomorrow = {c for r in get_dispatch_planner().summary(tomorrow)["routes"] for c in r["customers"]}
+    assert customer in planned_tomorrow
+
+
+def test_copilot_skips_customer_tomorrow_only(copilot):
+    from datetime import timedelta
+
+    from logistics_tower.dates import today
+
+    tomorrow = today() + timedelta(days=1)
+    customer = _customer_with_order_on(1)
+    today_before = len(get_repository().get_pending_orders(settings.default_cd_id))
+
+    result = copilot.chat(f"Amanhã não vamos atender {customer}", thread_id="t-skip-tomorrow")
+
+    action = next(a for a in result["actions"] if a["tool"] == "skip_customer_today")
+    assert action["result"]["status"] == "OK"
+    assert action["result"]["delivery_date"] == tomorrow.isoformat()
+    assert [d["plan_date"] for d in result["dispatches"]] == [tomorrow.isoformat()]
+    repo = get_repository()
+    assert {o["customer_name"] for o in repo.get_orders_by_status("SKIPPED", delivery_date=tomorrow)} == {customer}
+    assert len(repo.get_pending_orders(settings.default_cd_id)) == today_before  # today untouched

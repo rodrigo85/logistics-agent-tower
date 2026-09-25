@@ -10,6 +10,7 @@ from datetime import datetime
 from typing import Any
 
 from logistics_tower.config import settings
+from logistics_tower.dates import today
 from logistics_tower.db.repository import get_repository
 from logistics_tower.mcp.client import get_mcp_client
 from logistics_tower.memory.long_term import get_customer_memory_store
@@ -24,14 +25,19 @@ def supervisor_init_node(state: LogisticsAgentState) -> dict[str, Any]:
     Loads long-term customer dock rules from relational database and prepares operational environment.
     """
     cd_id = state.get("cd_id", settings.default_cd_id)
-    logger.info(f"Supervisor: Initializing dispatch planning for {cd_id}")
+    plan_date = state.get("plan_date") or today().isoformat()
+    logger.info(f"Supervisor: Initializing dispatch planning for {cd_id} on {plan_date}")
 
     memory_store = get_customer_memory_store()
     customer_rules = memory_store.get_all_rules()
 
-    log_msg = f"Supervisor: Session initialized for {cd_id} with {len(customer_rules)} persistent customer rules from database."
+    log_msg = (
+        f"Supervisor: Session initialized for {cd_id} ({plan_date}) with {len(customer_rules)} "
+        "persistent customer rules from database."
+    )
     return {
         "cd_id": cd_id,
+        "plan_date": plan_date,
         "customer_rules": customer_rules,
         "execution_log": [log_msg],
         "requires_human_approval": False,
@@ -63,6 +69,7 @@ def supervisor_finalize_node(state: LogisticsAgentState) -> dict[str, Any]:
     manifest: DispatchManifest = {
         "manifest_id": manifest_id,
         "cd_id": cd_id,
+        "plan_date": state.get("plan_date") or today().isoformat(),
         "timestamp": datetime.now().isoformat(),
         "total_orders_dispatched": total_orders,
         "total_vehicles_assigned": len(routes),
@@ -77,6 +84,7 @@ def supervisor_finalize_node(state: LogisticsAgentState) -> dict[str, Any]:
     repo.save_dispatch_manifest(
         manifest_id=manifest_id,
         cd_id=cd_id,
+        plan_date=state.get("plan_date") or today().isoformat(),
         total_orders=total_orders,
         total_vehicles=len(routes),
         total_weight_kg=round(total_w, 1),

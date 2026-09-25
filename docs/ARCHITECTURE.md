@@ -106,6 +106,8 @@ flowchart LR
   "re-plan after a mutation" rule are deterministic code, not prompt hopes.
 * Ambiguous names (chains with several stores) return `AMBIGUOUS` and the model
   asks which store; nothing is mutated.
+* Dates are parsed by code (`dates.parse_delivery_date`): the model passes "amanhã",
+  "quinta" or "27/09" verbatim; every day touched by a mutation is re-planned.
 * Chat threads have their own checkpointer; long-term memory is SQL.
 * Provider quality is measured by `evals/run_evals.py` (see `docs/LLM_EVALUATION.md`).
 
@@ -155,6 +157,9 @@ erDiagram
     fleet { int id PK; string vehicle_id UK; string plate UK; string vehicle_type; float max_weight_kg; float max_volume_m3; string home_cd_id }
     dispatch_manifests { int id PK; string manifest_id UK; datetime created_at; string status; string human_verdict; text manifest_payload_json }
 ```
+
+Orders carry a `delivery_date`; the WMS keeps a rolling horizon of `PLANNING_HORIZON_DAYS`
+(3) days and every plan, cache and manifest is scoped to one day.
 
 The seeder is idempotent: it converges the fleet to the five refrigerated trucks,
 inserts missing customers from `address_pool.py` (56 food retailers across seven

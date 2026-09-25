@@ -3,9 +3,9 @@ SQLAlchemy Relational Database Models for Logistics Control Tower.
 Stores Customers, Orders, Fleet, Customer Dock Rules, and Dispatch Manifests.
 """
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -83,6 +83,7 @@ class Order(Base):
     order_number: Mapped[str] = mapped_column(String(50), unique=True, index=True)
     customer_id: Mapped[int] = mapped_column(Integer, ForeignKey("customers.id"), index=True)
     cd_id: Mapped[str] = mapped_column(String(50), default="CD-ITAJAI-SC01")
+    delivery_date: Mapped[date] = mapped_column(Date, index=True, default=date.today)
     weight_kg: Mapped[float] = mapped_column(Float)
     volume_m3: Mapped[float] = mapped_column(Float)
     cargo_type: Mapped[str] = mapped_column(String(30), default="refrigerated")  # refrigerated, dry
@@ -114,6 +115,7 @@ class DispatchManifest(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     manifest_id: Mapped[str] = mapped_column(String(50), unique=True, index=True)
     cd_id: Mapped[str] = mapped_column(String(50))
+    plan_date: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
     total_orders: Mapped[int] = mapped_column(Integer)
     total_vehicles: Mapped[int] = mapped_column(Integer)

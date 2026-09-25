@@ -59,17 +59,22 @@ report when you want to publish a comparison; keep raw JSON out of git if it gro
 
 ## Latest local run
 
-Machine: Windows 11, Ollama 0.34, model partially offloaded to GPU. Report: [`20260925-054154.md`](../evals/results/20260925-054154.md).
+Machine: Windows 11, Ollama 0.34, model partially offloaded to GPU. Report: [`20260925-123851.md`](../evals/results/20260925-123851.md).
 
-| Provider / model | Pass | Tool acc. | Entity acc. | Replan acc. | Avg latency |
-|---|---|---|---|---|---|
-| ollama/qwen2.5:7b | 10/10 (100%) | 100% | 100% | 100% | 16.9 s |
+| Provider / model | Pass | Tool acc. | Entity acc. | Replan acc. | Median latency | Avg latency |
+|---|---|---|---|---|---|---|
+| ollama/qwen2.5:7b | 13/13 (100%) | 100% | 100% | 100% | 12.6 s | 203 s |
 
 Observations from this run:
 
-* The ambiguous case ("o Koch") was answered with a clarifying question and no mutation, as intended.
-* `question-orders` made the model call `list_orders` repeatedly before answering; the `MAX_TURNS`
-  guard bounded it. Not yet measured with larger models; it is a cheap place to tune the prompt.
-* Two earlier runs failed 2-3 cases for reasons that were fixed in code, not in the prompt:
+* All date cases pass: "passa X para amanhã" moves the order and re-plans both days;
+  "amanhã não vamos atender X" touches only tomorrow.
+* The average is distorted by one outlier: `question-tomorrow` took 41 minutes in this run
+  (89 s in the previous one) while the dashboard server and the evals shared the local model.
+  The median (12.6 s) is the representative figure; the runner now reports both.
+* `question-orders` still makes the model call `list_orders` repeatedly before answering; the
+  `MAX_TURNS` guard bounds it and the prompt now asks for a single call with counts.
+  Not yet measured with larger models.
+* Earlier runs failed 2-3 cases for reasons that were fixed in code, not in the prompt:
   skipping must also cover orders of an already-approved plan, and a shortened chain name
   ("Angeloni") is now disambiguated with the rest of the operator's sentence.

@@ -35,7 +35,7 @@ This project automates that planning cycle end to end:
 3. **Risk agent** audits overloads, missed windows, shift limits, unallocated orders and high-value cargo.
 4. **Human-in-the-Loop gate** pauses the LangGraph run and waits for an `APPROVED` / `REJECTED` verdict via API, dashboard or CLI.
 5. **Supervisor** emits the electronic dispatch manifest and persists it to SQL.
-6. **Dispatcher Copilot** (LLM) takes instructions such as *"não vamos atender o Bistek da Fazenda hoje"* or *"a Padaria Praia Brava agendou recebimento entre 9 e 11"*, applies them through MCP tools and re-plans.
+6. **Dispatcher Copilot** (LLM) takes instructions such as *"não vamos atender o Bistek da Fazenda hoje"*, *"passa o Koch de Gravatá para amanhã"* or *"a Padaria Praia Brava agendou sexta entre 9 e 11"*, applies them through MCP tools and re-plans every day it touched.
 
 ## Highlights
 
@@ -145,6 +145,10 @@ curl -X POST http://localhost:8000/copilot/chat -H "content-type: application/js
 
 curl -X POST http://localhost:8000/copilot/chat -H "content-type: application/json" \
      -d '{"message":"A Padaria & Confeitaria Praia Brava agendou recebimento entre 9 e 11"}'
+
+curl -X POST http://localhost:8000/copilot/chat -H "content-type: application/json" \
+     -d '{"message":"Passa o Komprão Koch de Gravatá para amanhã"}'
+# -> re-plans today and tomorrow; the dashboard date tabs show both
 ```
 
 The same box lives in the dashboard (right column) and in the terminal: `logistics-tower-chat`.
@@ -153,6 +157,7 @@ The same box lives in the dashboard (right column) and in the terminal: `logisti
 
 * **Cold chain only:** five refrigerated trucks (2 VUC, 2 Toco, 1 Truck); every order is chilled (0-4 °C) or frozen (-18 °C).
 * **Food retail customers:** 56 supermarkets, wholesalers, grocery stores, mini-markets, bakeries, butchers, fishmongers, greengrocers and convenience stores in seven cities, each with its own receiving window and dock profile.
+* **Rolling 3-day horizon:** orders carry a delivery date; the WMS holds today and the next two days (40 orders each) and every plan is per day.
 * **One route per truck per day:** loading 05:00-06:00, departure 06:00, up to 12 stops, 20 minutes per stop, return to the CD. No second trip.
 * **Nearby stops travel together:** two-pass sweep clustering by bearing around the CD plus centroid refinement, then OR-Tools sequencing inside the route.
 * **Never overload:** weight and volume hard-capped at 100%; orders that do not fit stay pending and are reported.
@@ -164,14 +169,14 @@ The same box lives in the dashboard (right column) and in the terminal: `logisti
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| `POST` | `/dispatch/plan` | Run the agents; returns `COMPLETED` or `AWAITING_HUMAN_APPROVAL` |
+| `POST` | `/dispatch/plan` | Run the agents for one delivery date (`plan_date`, default today); returns `COMPLETED` or `AWAITING_HUMAN_APPROVAL` |
 | `POST` | `/dispatch/resume` | Resume a paused thread with `APPROVED` / `REJECTED` / `OVERRIDE` |
 | `GET` | `/dispatch/{thread_id}` | Current state of a planning thread |
-| `POST` | `/api/orders/generate?count=N` | Replace pending orders with N refrigerated orders (default 40, one per customer) |
+| `POST` | `/api/orders/generate?count=N&days=D` | Replace the horizon with N refrigerated orders per day for D consecutive days (default 40 x 3) |
 | `POST` | `/copilot/chat` | Operator instruction in natural language; applies skips / reschedules and re-plans |
 | `GET` | `/copilot/status` · `/agents` | LLM provider availability, copilot tools, agent registry |
 | `GET` | `/api/vehicle/{plate}/itinerary` | Step-by-step daily itinerary for a vehicle |
-| `GET` | `/api/dashboard-data` | Fleet, orders and latest routes for the map |
+| `GET` | `/api/dashboard-data?date=` | Fleet, one day's orders and its latest routes for the map, plus the horizon |
 | `GET` | `/api/traffic/status` · `/api/traffic/route` | Google Maps integration status and traffic-aware routes |
 | `GET` | `/mcp/tools` | Tools exposed to agents through MCP |
 | `GET` | `/health` | Liveness, version, environment |
@@ -228,6 +233,7 @@ Copy `.env.example` to `.env`. The most relevant settings:
 | `GOOGLE_MAPS_API_KEY` | *(empty)* | Enables Routes API v2 live traffic |
 | `LLM_PROVIDER` | `ollama` | Copilot backend: `ollama` (`OLLAMA_MODEL`), `gemini` (`GOOGLE_API_KEY`), `openai` (`OPENAI_API_KEY`) |
 | `HITL_AUTO_APPROVE` | `false` | Skip the human gate (pipelines, demos) |
+| `PLANNING_HORIZON_DAYS` | `3` | Days of orders kept and generated (today + next) |
 | `MAX_STOPS_PER_VEHICLE` | `12` | Deliveries per route |
 | `DOCK_START_TIME` | `05:00` | Loading start; departure one hour later |
 | `MAX_WEIGHT_THRESHOLD_PERCENT` | `100.0` | Utilisation above which the risk agent flags an overload |

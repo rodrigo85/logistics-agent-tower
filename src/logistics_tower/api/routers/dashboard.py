@@ -1,11 +1,12 @@
 """Interactive dashboard (Leaflet map) and the JSON feed that backs it."""
 
+from datetime import date
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import HTMLResponse
 
-from logistics_tower.api.dependencies import get_graph, get_plan_cache, thread_config
+from logistics_tower.api.dependencies import get_dispatch_planner, get_graph, thread_config
 from logistics_tower.config import settings
 from logistics_tower.db.repository import get_repository
 from logistics_tower.services.traffic_service import get_traffic_service
@@ -24,22 +25,26 @@ def get_dashboard() -> HTMLResponse:
 
 
 @router.get("/api/dashboard-data")
-def get_dashboard_data():
-    """Fleet, pending orders and the latest planned routes for map and table rendering."""
+def get_dashboard_data(plan_date: date | None = Query(default=None, alias="date")):
+    """Fleet, one day's orders (default today) and that day's latest routes for map and table rendering."""
     repo = get_repository()
-    cache = get_plan_cache()
+    planner = get_dispatch_planner()
+    cache = planner.for_date(plan_date)
     return {
+        "plan_date": cache.plan_date.isoformat(),
+        "horizon": planner.horizon(),
         "cd_id": settings.default_cd_id,
         "cd_name": settings.cd_name,
         "cd_address": settings.cd_address,
         "cd_lat": settings.cd_lat,
         "cd_lng": settings.cd_lng,
         "fleet": repo.get_available_fleet(settings.default_cd_id),
-        "orders": repo.get_pending_orders(settings.default_cd_id),
+        "orders": repo.get_pending_orders(settings.default_cd_id, delivery_date=cache.plan_date),
+        "dispatched_orders": repo.get_orders_by_status("DISPATCHED", settings.default_cd_id, cache.plan_date),
         "routes": cache.routes,
         "load_allocation": cache.load_allocation,
         "unallocated_orders": cache.unallocated_orders,
-        "skipped_orders": repo.get_orders_by_status("SKIPPED", settings.default_cd_id),
+        "skipped_orders": repo.get_orders_by_status("SKIPPED", settings.default_cd_id, cache.plan_date),
         "plan_thread_id": cache.thread_id,
         "plan_status": cache.status,
         "google_traffic_active": get_traffic_service().is_available(),

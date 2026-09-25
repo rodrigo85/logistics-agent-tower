@@ -15,7 +15,9 @@ def plan_dispatch(req: DispatchRequest) -> DispatchResponse:
     When operational risks are flagged, execution pauses at the HITL gate and the
     response carries `requires_approval=True` with the reason.
     """
-    return DispatchResponse(**get_dispatch_planner().plan(req.cd_id, auto_approve=req.auto_approve))
+    return DispatchResponse(
+        **get_dispatch_planner().plan(req.cd_id, auto_approve=req.auto_approve, plan_date=req.plan_date)
+    )
 
 
 @router.post("/resume", response_model=DispatchResponse)

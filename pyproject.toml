@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "logistics-agent-tower"
-version = "1.3.0"
+version = "1.4.0"
 description = "Autonomous multi-agent control tower for distribution-center dispatch and route optimization (LangGraph, OR-Tools, MCP, Human-in-the-Loop)."
 readme = "README.md"
 requires-python = ">=3.10"

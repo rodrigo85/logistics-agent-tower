@@ -15,6 +15,7 @@ from logistics_tower.mcp.tools import (
     tool_get_customer_dock_rules,
     tool_get_pending_orders,
     tool_list_orders,
+    tool_move_customer_orders,
     tool_optimize_route,
     tool_remember_note,
     tool_reschedule_customer_window,
@@ -27,9 +28,9 @@ mcp_server = MCPServer(name="wms-tms-logistics-server")
 
 
 @mcp_server.tool()
-def get_pending_orders(cd_id: str = settings.default_cd_id) -> str:
-    """Fetches all delivery orders currently waiting at the CD staging area for dispatch."""
-    orders = tool_get_pending_orders(cd_id)
+def get_pending_orders(cd_id: str = settings.default_cd_id, delivery_date: str = "hoje") -> str:
+    """Fetches the delivery orders waiting at the CD for one delivery date (hoje, amanhã, quinta, 27/09, ISO)."""
+    orders = tool_get_pending_orders(cd_id, delivery_date)
     return json.dumps(orders, ensure_ascii=False)
 
 
@@ -72,27 +73,37 @@ def find_customers(query: str) -> str:
 
 
 @mcp_server.tool()
-def skip_customer_today(customer: str, reason: str = "Solicitado pelo despachante") -> str:
-    """Removes a customer's pending orders from today's plan (kept in the WMS as SKIPPED)."""
-    return json.dumps(tool_skip_customer_today(customer, reason), ensure_ascii=False)
+def skip_customer_today(customer: str, reason: str = "Solicitado pelo despachante", date: str = "hoje") -> str:
+    """Removes a customer's orders of one delivery date from that day's plan (kept in the WMS as SKIPPED)."""
+    return json.dumps(tool_skip_customer_today(customer, reason, date), ensure_ascii=False)
 
 
 @mcp_server.tool()
-def restore_customer_today(customer: str) -> str:
-    """Puts a customer's skipped orders back into today's plan."""
-    return json.dumps(tool_restore_customer_today(customer), ensure_ascii=False)
+def restore_customer_today(customer: str, date: str = "hoje") -> str:
+    """Puts a customer's skipped orders of one delivery date back into the plan."""
+    return json.dumps(tool_restore_customer_today(customer, date), ensure_ascii=False)
 
 
 @mcp_server.tool()
-def reschedule_customer_window(customer: str, window_start: str, window_end: str, remember: bool = True) -> str:
-    """Sets the receiving window (HH:MM) of a customer's orders today and optionally remembers it."""
-    return json.dumps(tool_reschedule_customer_window(customer, window_start, window_end, remember), ensure_ascii=False)
+def move_customer_orders(customer: str, to_date: str, from_date: str = "hoje") -> str:
+    """Moves a customer's orders from one delivery date to another (amanhã, quinta, 27/09, ISO)."""
+    return json.dumps(tool_move_customer_orders(customer, to_date, from_date), ensure_ascii=False)
 
 
 @mcp_server.tool()
-def list_orders(status: str = "PENDING") -> str:
-    """Lists today's orders by status (PENDING, SKIPPED, DISPATCHED)."""
-    return json.dumps(tool_list_orders(status), ensure_ascii=False)
+def reschedule_customer_window(
+    customer: str, window_start: str, window_end: str, remember: bool = True, date: str = "hoje"
+) -> str:
+    """Sets the receiving window (HH:MM) of a customer's orders on one delivery date and optionally remembers it."""
+    return json.dumps(
+        tool_reschedule_customer_window(customer, window_start, window_end, remember, date), ensure_ascii=False
+    )
+
+
+@mcp_server.tool()
+def list_orders(status: str = "PENDING", date: str = "hoje") -> str:
+    """Lists the orders of one delivery date ("todos" = whole horizon) by status (PENDING, SKIPPED, DISPATCHED)."""
+    return json.dumps(tool_list_orders(status, date), ensure_ascii=False)
 
 
 @mcp_server.tool()

@@ -74,10 +74,11 @@
         <i data-lucide="code" class="w-4 h-4 mr-1.5 text-blue-400"></i>
         Swagger Docs
       </a>
+      <div id="dateTabs" class="flex items-center space-x-1 bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs font-semibold"></div>
       <button onclick="generateRandomOrders()" id="btnGenerate"
         class="px-4 py-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg shadow-lg shadow-indigo-600/30 transition flex items-center">
         <i data-lucide="shuffle" class="w-4 h-4 mr-1.5"></i>
-        Gerar Pedidos do Dia (40 clientes)
+        Gerar Pedidos (3 dias)
       </button>
       <button onclick="triggerDispatchPlan()" id="btnPlan"
         class="px-4 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white rounded-lg shadow-lg shadow-blue-600/30 transition flex items-center">
@@ -187,6 +188,7 @@
               class="bg-slate-950 text-slate-400 uppercase tracking-wider border-b border-slate-800 font-semibold sticky top-0">
               <tr>
                 <th class="py-2.5 px-3">Pedido</th>
+                <th class="py-2.5 px-3 text-center">Entrega</th>
                 <th class="py-2.5 px-3">Cliente / Destino</th>
                 <th class="py-2.5 px-3">Endereço & Bairro</th>
                 <th class="py-2.5 px-3 text-center">Carga</th>
@@ -197,7 +199,7 @@
             </thead>
             <tbody id="ordersTableBody" class="divide-y divide-slate-800/60 font-medium">
               <tr>
-                <td colspan="7" class="text-center py-6 text-slate-500">Carregando pedidos do banco de dados...</td>
+                <td colspan="8" class="text-center py-6 text-slate-500">Carregando pedidos do banco de dados...</td>
               </tr>
             </tbody>
           </table>
@@ -254,11 +256,12 @@
           <span id="copilotStatusBadge" class="text-[10px] px-2 py-0.5 rounded-full border border-slate-700 bg-slate-800 text-slate-300 font-mono">verificando LLM...</span>
         </div>
         <p class="text-[11px] text-slate-400 mb-2">
-          Escreva instruções em linguagem natural. O copiloto altera os pedidos de hoje e recalcula as rotas.
+          Escreva instruções em linguagem natural, com ou sem data ("hoje", "amanhã", "quinta", "27/09"). O copiloto altera os pedidos e recalcula as rotas dos dias afetados.
         </p>
         <div class="flex flex-wrap gap-1.5 mb-2">
           <button onclick="useCopilotExample(this)" class="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition">Não vamos atender o Bistek da Fazenda hoje</button>
           <button onclick="useCopilotExample(this)" class="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition">Padaria Praia Brava agendou recebimento entre 9 e 11</button>
+          <button onclick="useCopilotExample(this)" class="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition">Passa o Koch de Gravatá para amanhã</button>
           <button onclick="useCopilotExample(this)" class="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition">Quais paradas estão atrasadas?</button>
         </div>
         <div id="copilotMessages" class="bg-slate-950 border border-slate-800/80 rounded-xl p-3 h-56 overflow-y-auto custom-scrollbar space-y-2 text-xs">
@@ -508,6 +511,35 @@
     let pendingMarkers = [];
     let currentSkipped = [];
     let copilotThreadId = null;
+    let currentDate = null;        // ISO date of the day shown (null = today)
+    let currentDateLabel = '';
+    let horizon = [];
+
+    function formatBrDate(iso) {
+      if (!iso) return '';
+      const [y, m, d] = iso.split('-');
+      return `${d}/${m}`;
+    }
+
+    function renderDateTabs() {
+      const box = document.getElementById('dateTabs');
+      if (!box) return;
+      box.innerHTML = horizon.map(day => {
+        const active = day.date === currentDate;
+        const planned = day.plan_status ? (day.plan_status === 'AWAITING_HUMAN_APPROVAL' ? '⏳' : '✓') : '';
+        return `
+          <button onclick="selectDate('${day.date}')"
+            class="px-3 py-1 rounded-lg transition ${active ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'}"
+            title="${day.pending + day.dispatched} pedidos ativos · ${day.skipped} excluídos${day.plan_status ? ' · plano ' + day.plan_status : ''}">
+            ${day.label} <span class="ml-1 text-[10px] opacity-80">${day.pending + day.dispatched}${planned ? ' ' + planned : ''}</span>
+          </button>`;
+      }).join('');
+    }
+
+    async function selectDate(iso) {
+      currentDate = iso;
+      await loadDashboard();
+    }
 
 
     // ------------------------------------------------------------------ Copilot
@@ -551,21 +583,9 @@
     }
 
     async function refreshAfterCopilot(dispatch) {
-      const res = await fetch('/api/dashboard-data');
-      const data = await res.json();
-      currentFleet = data.fleet || [];
-      currentOrders = data.orders || [];
-      currentRoutes = data.routes || [];
-      currentLoads = data.load_allocation || [];
-      currentSkipped = data.skipped_orders || [];
-      renderFleetCards(currentFleet, currentLoads);
-      renderOrdersTable(currentOrders);
-      if (currentRoutes.length > 0) {
-        await renderRoutesOnMap(currentRoutes);
-        renderStopsTable(currentRoutes);
-      } else {
-        renderPendingOrderPins(currentOrders);
-      }
+      // show the day the copilot re-planned last (it may differ from the day on screen)
+      if (dispatch && dispatch.plan_date) currentDate = dispatch.plan_date;
+      await loadDashboard();
       if (dispatch) {
         currentThreadId = dispatch.thread_id;
         const hitl = document.getElementById('hitlCard');
@@ -575,7 +595,6 @@
         } else {
           hitl.classList.add('hidden');
         }
-        document.getElementById('manifestCard').classList.add('hidden');
       }
     }
 
@@ -617,7 +636,9 @@
         logBox.scrollTop = logBox.scrollHeight;
         if (data.replanned) {
           await refreshAfterCopilot(data.dispatch);
-          logBox.innerHTML += `<p class="text-emerald-400">> [Copiloto] Rotas recalculadas (${data.dispatch ? data.dispatch.status : 'ok'}).</p>`;
+          (data.dispatches || []).forEach(d => {
+            logBox.innerHTML += `<p class="text-emerald-400">> [Copiloto] Rotas de ${d.date_label || d.plan_date} recalculadas (${d.status}).</p>`;
+          });
         }
       } catch (err) {
         pending.remove();
@@ -633,14 +654,31 @@
     // Load Initial Data
     async function loadDashboard() {
       try {
-        const res = await fetch('/api/dashboard-data');
+        const res = await fetch('/api/dashboard-data' + (currentDate ? `?date=${currentDate}` : ''));
         const data = await res.json();
+        currentDate = data.plan_date;
+        horizon = data.horizon || [];
+        const day = horizon.find(h => h.date === currentDate);
+        currentDateLabel = day ? day.label : formatBrDate(currentDate);
+        renderDateTabs();
         currentFleet = data.fleet || [];
-        currentOrders = data.orders || [];
+        currentOrders = (data.orders || []).concat(data.dispatched_orders || []);
         currentRoutes = data.routes || [];
         currentLoads = data.load_allocation || [];
         currentSkipped = data.skipped_orders || [];
-        if (data.plan_thread_id) currentThreadId = data.plan_thread_id;
+        currentThreadId = data.plan_thread_id || null;
+        // clear stale route layers when switching to a day without a plan
+        routeLayers.forEach(l => map.removeLayer(l));
+        routeLayers = [];
+        vehicleMapData = {};
+        hideHighlightBanner();
+        document.getElementById('hitlCard').classList.toggle('hidden', data.plan_status !== 'AWAITING_HUMAN_APPROVAL');
+        document.getElementById('manifestCard').classList.add('hidden');
+        document.getElementById('routeSummaryBadge').innerText = currentRoutes.length ? '' : 'Aguardando cálculo';
+        if (!currentRoutes.length) {
+          document.getElementById('stopsTableBody').innerHTML = `
+            <tr><td colspan="6" class="text-center py-8 text-slate-500">Clique em "Calcular Rotas" para planejar ${currentDateLabel}.</td></tr>`;
+        }
 
         if (data.google_traffic_active) {
           const badge = document.getElementById('googleTrafficBadge');
@@ -665,13 +703,14 @@
       const tbody = document.getElementById('ordersTableBody');
       const badge = document.getElementById('ordersCountBadge');
       tbody.innerHTML = '';
-      badge.innerText = `${orders.length} pedidos pendentes` + (currentSkipped.length ? ` · ${currentSkipped.length} excluídos hoje` : '');
+      const dateLabel = currentDateLabel || 'hoje';
+      badge.innerText = `${orders.length} pedidos pendentes · ${dateLabel}` + (currentSkipped.length ? ` · ${currentSkipped.length} excluídos` : '');
 
       if (!orders || orders.length === 0) {
         tbody.innerHTML = `
           <tr>
-            <td colspan="7" class="text-center py-6 text-slate-500">
-              Nenhum pedido pendente no momento. Clique em "Gerar Pedidos do Dia (40 clientes)".
+            <td colspan="8" class="text-center py-6 text-slate-500">
+              Nenhum pedido pendente para este dia. Clique em "Gerar Pedidos (3 dias)".
             </td>
           </tr>
         `;
@@ -689,6 +728,7 @@
         tbody.innerHTML += `
           <tr class="hover:bg-slate-800/40 transition">
             <td class="py-2.5 px-3 font-mono font-bold text-slate-200">${o.order_id}</td>
+            <td class="py-2.5 px-3 text-center font-mono text-[11px] text-cyan-300">${formatBrDate(o.delivery_date)}</td>
             <td class="py-2.5 px-3 font-semibold text-white">${o.customer_name}</td>
             <td class="py-2.5 px-3 text-[11px] text-slate-400">${o.address}</td>
             <td class="py-2.5 px-3 text-center">
@@ -777,16 +817,13 @@
           </tr>
         `;
 
-        const res = await fetch('/api/orders/generate?count=40', { method: 'POST' });
+        const res = await fetch('/api/orders/generate?count=40&days=3', { method: 'POST' });
         const data = await res.json();
-        currentOrders = data.orders;
-
-        renderOrdersTable(currentOrders);
-        renderPendingOrderPins(currentOrders);
-        renderFleetCards(currentFleet); // Reset fleet load bars
+        currentDate = null;
+        await loadDashboard();
 
         logBox.innerHTML += `<p class="text-emerald-400">> [WMS] ${data.message}</p>`;
-        logBox.innerHTML += `<p class="text-slate-300">> [WMS] ${currentOrders.length} novos clientes plotados no mapa regional.</p>`;
+        logBox.innerHTML += `<p class="text-slate-300">> [WMS] ${currentOrders.length} clientes de hoje plotados no mapa regional.</p>`;
         logBox.scrollTop = logBox.scrollHeight;
 
       } catch (err) {
@@ -794,7 +831,7 @@
         logBox.innerHTML += `<p class="text-rose-400">> Erro ao gerar pedidos: ${err.message}</p>`;
       } finally {
         btn.disabled = false;
-        btn.innerHTML = `<i data-lucide="shuffle" class="w-4 h-4 mr-1.5"></i> Gerar Pedidos do Dia (40 clientes)`;
+        btn.innerHTML = `<i data-lucide="shuffle" class="w-4 h-4 mr-1.5"></i> Gerar Pedidos (3 dias)`;
         lucide.createIcons();
       }
     }
@@ -913,13 +950,13 @@
       lucide.createIcons();
 
       const logBox = document.getElementById('agentLogs');
-      logBox.innerHTML = '<p class="text-blue-400">> Iniciando Squad de Agentes no LangGraph...</p>';
+      logBox.innerHTML = `<p class="text-blue-400">> Iniciando Squad de Agentes no LangGraph para ${currentDateLabel || 'hoje'}...</p>`;
 
       try {
         const res = await fetch('/dispatch/plan', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ cd_id: 'CD-ITAJAI-SC01', auto_approve: false })
+          body: JSON.stringify({ cd_id: 'CD-ITAJAI-SC01', auto_approve: false, plan_date: currentDate })
         });
         const data = await res.json();
         currentThreadId = data.thread_id;

@@ -4,6 +4,9 @@ Logistics tools exposed through the Model Context Protocol (MCP).
 Every function here is registered twice: in-process for the LangGraph agents
 (`mcp/client.py`) and over stdio for external MCP clients (`mcp/server.py`).
 The conversational copilot binds the operator-facing ones as LangChain tools.
+
+Dates: every operator tool takes a `date` argument written the way the dispatcher
+says it ("hoje", "amanhã", "quinta", "26/09", "2026-09-26"); empty means today.
 """
 
 import contextvars
@@ -11,6 +14,7 @@ import re
 from typing import Any
 
 from logistics_tower.config import settings
+from logistics_tower.dates import label_for, parse_delivery_date
 from logistics_tower.db.repository import get_repository, normalize_text
 from logistics_tower.memory.long_term import get_customer_memory_store
 from logistics_tower.services.fleet_service import get_fleet_service
@@ -22,6 +26,7 @@ from logistics_tower.services.wms_service import get_wms_service
 operator_message: contextvars.ContextVar[str] = contextvars.ContextVar("operator_message", default="")
 
 _TIME_RE = re.compile(r"^\s*(\d{1,2})(?:[:h](\d{2})?)?\s*(?:h|hs|horas)?\s*$", re.IGNORECASE)
+_EVERY_DAY = {"todos", "todas", "all", "sempre", "todos os dias"}
 
 
 def normalize_clock(value: str) -> str:
@@ -35,10 +40,16 @@ def normalize_clock(value: str) -> str:
     return f"{hours:02d}:{minutes:02d}"
 
 
+def _day(value: str | None) -> dict[str, Any]:
+    """Parse an operator date and describe it; raises ValueError on garbage."""
+    d = parse_delivery_date(value or None)
+    return {"date": d, "iso": d.isoformat(), "label": label_for(d)}
+
+
 # ------------------------------------------------------------------ planning
-def tool_get_pending_orders(cd_id: str) -> list[dict[str, Any]]:
-    """Fetches all delivery orders currently waiting at the CD staging area."""
-    return get_wms_service().get_pending_orders(cd_id)
+def tool_get_pending_orders(cd_id: str, delivery_date: str | None = None) -> list[dict[str, Any]]:
+    """Fetches the delivery orders waiting at the CD for one delivery date (default today)."""
+    return get_wms_service().get_pending_orders(cd_id, delivery_date=delivery_date)
 
 
 def tool_get_available_fleet(cd_id: str) -> list[dict[str, Any]]:
@@ -106,72 +117,148 @@ def _resolve_customer(customer: str) -> tuple[dict[str, Any] | None, list[dict[s
     return match, candidates
 
 
+def _unresolved(customer: str, candidates: list[dict[str, Any]]) -> dict[str, Any]:
+    return {"status": "AMBIGUOUS" if candidates else "NOT_FOUND", "query": customer, "candidates": candidates}
+
+
 def tool_find_customers(query: str) -> list[dict[str, Any]]:
-    """Searches customers by name, code, neighbourhood or city; returns candidates with today's order counts."""
+    """Searches customers by name, code, neighbourhood or city; returns candidates with their orders per date."""
     return get_repository().find_customers(query, limit=5)
 
 
-def tool_skip_customer_today(customer: str, reason: str = "Solicitado pelo despachante") -> dict[str, Any]:
-    """Removes a customer's pending orders from today's plan (they stay in the WMS as SKIPPED)."""
+def tool_skip_customer_today(
+    customer: str, reason: str = "Solicitado pelo despachante", date: str = "hoje"
+) -> dict[str, Any]:
+    """Removes a customer's orders of one delivery date (default today) from that day's plan; they stay as SKIPPED."""
     match, candidates = _resolve_customer(customer)
     if match is None:
-        return {"status": "AMBIGUOUS" if candidates else "NOT_FOUND", "query": customer, "candidates": candidates}
-    orders = get_repository().skip_customer_orders(match["customer_id"], reason)
-    get_repository().add_operator_memory("SKIP", f"{match['customer_name']}: não atender hoje ({reason}).")
+        return _unresolved(customer, candidates)
+    try:
+        day = _day(date)
+    except ValueError as exc:
+        return {"status": "INVALID_DATE", "detail": str(exc)}
+    repo = get_repository()
+    orders = repo.skip_customer_orders(match["customer_id"], reason, delivery_date=day["date"])
+    if orders:
+        repo.add_operator_memory("SKIP", f"{match['customer_name']}: não atender em {day['label']} ({reason}).")
     return {
-        "status": "OK" if orders else "NO_PENDING_ORDERS",
+        "status": "OK" if orders else "NO_ORDERS_ON_DATE",
         "customer": match["customer_name"],
+        "delivery_date": day["iso"],
+        "date_label": day["label"],
         "skipped_orders": orders,
         "reason": reason,
+        "customer_orders": match["orders"],
     }
 
 
-def tool_restore_customer_today(customer: str) -> dict[str, Any]:
-    """Puts a customer's previously skipped orders back into today's plan."""
+def tool_restore_customer_today(customer: str, date: str = "hoje") -> dict[str, Any]:
+    """Puts a customer's previously skipped orders of one delivery date (default today) back into the plan."""
     match, candidates = _resolve_customer(customer)
     if match is None:
-        return {"status": "AMBIGUOUS" if candidates else "NOT_FOUND", "query": customer, "candidates": candidates}
-    orders = get_repository().restore_customer_orders(match["customer_id"])
-    return {"status": "OK" if orders else "NOTHING_TO_RESTORE", "customer": match["customer_name"], "orders": orders}
+        return _unresolved(customer, candidates)
+    try:
+        day = _day(date)
+    except ValueError as exc:
+        return {"status": "INVALID_DATE", "detail": str(exc)}
+    orders = get_repository().restore_customer_orders(match["customer_id"], delivery_date=day["date"])
+    return {
+        "status": "OK" if orders else "NOTHING_TO_RESTORE",
+        "customer": match["customer_name"],
+        "delivery_date": day["iso"],
+        "date_label": day["label"],
+        "orders": orders,
+        "customer_orders": match["orders"],
+    }
+
+
+def tool_move_customer_orders(customer: str, to_date: str, from_date: str = "hoje") -> dict[str, Any]:
+    """Moves a customer's orders from one delivery date (default today) to another ("amanhã", "quinta", "27/09")."""
+    match, candidates = _resolve_customer(customer)
+    if match is None:
+        return _unresolved(customer, candidates)
+    try:
+        src, dst = _day(from_date), _day(to_date)
+    except ValueError as exc:
+        return {"status": "INVALID_DATE", "detail": str(exc)}
+    if src["date"] == dst["date"]:
+        return {"status": "SAME_DATE", "customer": match["customer_name"], "delivery_date": src["iso"]}
+    repo = get_repository()
+    orders = repo.move_customer_orders(match["customer_id"], src["date"], dst["date"])
+    if orders:
+        repo.add_operator_memory(
+            "MOVE", f"{match['customer_name']}: entrega movida de {src['label']} para {dst['label']}."
+        )
+    return {
+        "status": "OK" if orders else "NO_ORDERS_ON_DATE",
+        "customer": match["customer_name"],
+        "from_date": src["iso"],
+        "to_date": dst["iso"],
+        "from_label": src["label"],
+        "to_label": dst["label"],
+        "orders": orders,
+        "customer_orders": match["orders"],
+    }
 
 
 def tool_reschedule_customer_window(
-    customer: str, window_start: str, window_end: str, remember: bool = True
+    customer: str, window_start: str, window_end: str, remember: bool = True, date: str = "hoje"
 ) -> dict[str, Any]:
-    """Sets the receiving window (HH:MM-HH:MM) of a customer's orders today; `remember` keeps it for future orders."""
+    """
+    Sets the receiving window (HH:MM-HH:MM) of a customer's orders on one delivery date (default today;
+    "todos" = every date). `remember` keeps the window for the customer's future orders.
+    """
     match, candidates = _resolve_customer(customer)
     if match is None:
-        return {"status": "AMBIGUOUS" if candidates else "NOT_FOUND", "query": customer, "candidates": candidates}
+        return _unresolved(customer, candidates)
     try:
         start, end = normalize_clock(window_start), normalize_clock(window_end)
     except ValueError as exc:
         return {"status": "INVALID_WINDOW", "detail": str(exc)}
     if start >= end:
         return {"status": "INVALID_WINDOW", "detail": f"Janela inválida: início {start} deve ser antes do fim {end}."}
+    every_day = str(date).strip().lower() in _EVERY_DAY
+    try:
+        day = None if every_day else _day(date)
+    except ValueError as exc:
+        return {"status": "INVALID_DATE", "detail": str(exc)}
     repo = get_repository()
-    orders = repo.reschedule_customer_window(match["customer_id"], start, end, remember=remember)
+    orders = repo.reschedule_customer_window(
+        match["customer_id"],
+        start,
+        end,
+        remember=remember,
+        delivery_date="all" if day is None else day["date"],
+    )
     if remember:
         repo.add_operator_memory("WINDOW", f"{match['customer_name']}: recebe entre {start} e {end}.")
         repo.add_customer_rule(
             match["customer_name"], "DOCK_WINDOW", f"Recebimento agendado entre {start} e {end}.", priority="HIGH"
         )
     return {
-        "status": "OK",
+        "status": "OK" if orders or remember else "NO_ORDERS_ON_DATE",
         "customer": match["customer_name"],
         "window": f"{start} - {end}",
+        "delivery_date": "all" if day is None else day["iso"],
+        "date_label": "todos os dias" if day is None else day["label"],
         "orders_updated": orders,
         "remembered": remember,
+        "customer_orders": match["orders"],
     }
 
 
-def tool_list_orders(status: str = "PENDING") -> list[dict[str, Any]]:
-    """Lists today's orders by status (PENDING, SKIPPED or DISPATCHED) with customer, window and weight."""
-    rows = get_repository().get_orders_by_status(status.upper(), settings.default_cd_id)
+def tool_list_orders(status: str = "PENDING", date: str = "hoje") -> list[dict[str, Any]]:
+    """Lists orders of one delivery date (default today; "todos" = whole horizon) by status: PENDING, SKIPPED, DISPATCHED."""
+    every_day = str(date).strip().lower() in _EVERY_DAY
+    rows = get_repository().get_orders_by_status(
+        status.upper(), settings.default_cd_id, delivery_date="all" if every_day else parse_delivery_date(date)
+    )
     return [
         {
             "order_id": o["order_id"],
             "customer": o["customer_name"],
             "city": o["city"],
+            "delivery_date": o["delivery_date"],
             "window": f"{o['window_start']} - {o['window_end']}",
             "weight_kg": o["weight_kg"],
             "status": o["status"],

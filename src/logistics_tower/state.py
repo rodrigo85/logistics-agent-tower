@@ -103,9 +103,10 @@ class RiskWarning(TypedDict):
     description: str
 
 
-class DispatchManifest(TypedDict):
+class DispatchManifest(TypedDict, total=False):
     manifest_id: str
     cd_id: str
+    plan_date: str
     timestamp: str
     total_orders_dispatched: int
     total_vehicles_assigned: int
@@ -118,6 +119,7 @@ class DispatchManifest(TypedDict):
 class LogisticsAgentState(TypedDict):
     # Context
     cd_id: str
+    plan_date: str  # ISO date of the day being planned
     raw_orders: list[dict[str, Any]]
     available_fleet: list[dict[str, Any]]
     customer_rules: list[dict[str, Any]]

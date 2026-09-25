@@ -22,6 +22,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import statistics
 import sys
 import tempfile
 import time
@@ -136,6 +137,7 @@ def run_provider(provider: str, model_name: str | None, cases: list[dict[str, An
         "entity_accuracy": round(sum(r["entity_ok"] for r in rows) / len(rows), 3) if rows else 0.0,
         "replan_accuracy": round(sum(r["replan_ok"] for r in rows) / len(rows), 3) if rows else 0.0,
         "avg_latency_s": round(sum(r["latency_s"] for r in rows) / len(rows), 1) if rows else 0.0,
+        "median_latency_s": round(statistics.median(r["latency_s"] for r in rows), 1) if rows else 0.0,
         "rows": rows,
     }
 
@@ -146,12 +148,12 @@ def to_markdown(reports: list[dict[str, Any]], repo_customers: int) -> str:
         "",
         f"Cases: {reports[0]['cases'] if reports else 0} · customers in pool: {repo_customers} · routing: haversine (offline)",
         "",
-        "| Provider / model | Pass | Tool acc. | Entity acc. | Replan acc. | Avg latency |",
-        "|---|---|---|---|---|---|",
+        "| Provider / model | Pass | Tool acc. | Entity acc. | Replan acc. | Median latency | Avg latency |",
+        "|---|---|---|---|---|---|---|",
     ]
     lines.extend(
         f"| {r['label']} | {r['passed']}/{r['cases']} ({r['accuracy']:.0%}) | {r['tool_accuracy']:.0%} | "
-        f"{r['entity_accuracy']:.0%} | {r['replan_accuracy']:.0%} | {r['avg_latency_s']} s |"
+        f"{r['entity_accuracy']:.0%} | {r['replan_accuracy']:.0%} | {r['median_latency_s']} s | {r['avg_latency_s']} s |"
         for r in reports
     )
     for r in reports:

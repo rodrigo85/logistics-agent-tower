@@ -1,6 +1,9 @@
 """
-Repository Layer for Database Queries.
-Connects WMS, TMS, and Memory services directly to relational database tables.
+Repository layer: the only module that talks SQLAlchemy.
+
+Serves the WMS/TMS services, the long-term memory and the copilot tools with plain
+dicts (the graph state must stay JSON-serialisable). Orders are always scoped by
+delivery date; `None` means "today".
 """
 
 import difflib
@@ -9,17 +12,19 @@ import json
 import random
 import unicodedata
 from collections.abc import Mapping
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Any
 
 from sqlalchemy.orm import joinedload
 
 from logistics_tower.config import settings
+from logistics_tower.dates import parse_delivery_date, planning_days, today
 from logistics_tower.db.models import Customer, CustomerRule, DispatchManifest, OperatorMemory, Order, Vehicle
-from logistics_tower.db.order_factory import build_orders
+from logistics_tower.db.order_factory import build_orders_for_days
 from logistics_tower.db.session import SessionLocal, init_db
 
 _DEFAULT_CD = settings.default_cd_id
+ACTIVE_STATUSES = ("PENDING", "DISPATCHED")  # part of a day's plan (DISPATCHED = approved plan)
 
 
 def _stable_digits(text: str, length: int) -> str:
@@ -34,8 +39,12 @@ def normalize_text(text: str) -> str:
     return " ".join(stripped.lower().replace("-", " ").split())
 
 
-def _customer_to_dict(c: Customer, pending: int | None = None, skipped: int | None = None) -> dict[str, Any]:
-    data: dict[str, Any] = {
+def _as_date(value: str | date | None) -> date:
+    return parse_delivery_date(value) if not isinstance(value, date) else value
+
+
+def _customer_to_dict(c: Customer) -> dict[str, Any]:
+    return {
         "customer_id": c.id,
         "customer_code": c.code,
         "customer_name": c.name,
@@ -49,11 +58,6 @@ def _customer_to_dict(c: Customer, pending: int | None = None, skipped: int | No
             f"{c.window_override_start} - {c.window_override_end}" if c.window_override_start else None
         ),
     }
-    if pending is not None:
-        data["pending_orders"] = pending
-    if skipped is not None:
-        data["skipped_orders"] = skipped
-    return data
 
 
 def _order_to_dict(o: Order) -> dict[str, Any]:
@@ -70,6 +74,7 @@ def _order_to_dict(o: Order) -> dict[str, Any]:
         "address": f"{c.address} - {c.neighborhood}, {c.city} - {c.state}",
         "lat": c.lat,
         "lng": c.lng,
+        "delivery_date": o.delivery_date.isoformat(),
         "weight_kg": o.weight_kg,
         "volume_m3": o.volume_m3,
         "cargo_type": o.cargo_type,
@@ -109,45 +114,82 @@ def _rule_to_dict(r: CustomerRule) -> dict[str, Any]:
     }
 
 
+def _customer_for_factory(c: Customer) -> dict[str, Any]:
+    return {
+        "id": c.id,
+        "segment": c.segment,
+        "name": c.name,
+        "window_override_start": c.window_override_start,
+        "window_override_end": c.window_override_end,
+    }
+
+
 class LogisticsRepository:
-    """Data-access layer shared by the WMS, TMS and long-term memory services."""
+    """Data-access layer shared by the WMS, TMS, long-term memory and the copilot."""
 
     def __init__(self):
         init_db()
 
-    def get_pending_orders(self, cd_id: str = _DEFAULT_CD) -> list[dict[str, Any]]:
-        """Queries pending orders from the database joined with customer location data."""
+    # ------------------------------------------------------------- reads
+    def get_pending_orders(
+        self, cd_id: str = _DEFAULT_CD, delivery_date: str | date | None = None
+    ) -> list[dict[str, Any]]:
+        """Pending orders of one delivery date (default today) joined with customer location data."""
+        day = _as_date(delivery_date)
         with SessionLocal() as session:
             orders = (
                 session.query(Order)
                 .options(joinedload(Order.customer))
-                .filter(Order.cd_id == cd_id, Order.status == "PENDING")
+                .filter(Order.cd_id == cd_id, Order.status == "PENDING", Order.delivery_date == day)
                 .all()
             )
-
             return [_order_to_dict(o) for o in orders]
 
+    def get_orders_by_status(
+        self, status: str, cd_id: str = _DEFAULT_CD, delivery_date: str | date | None = None
+    ) -> list[dict[str, Any]]:
+        """Orders with a given status; `delivery_date="all"` returns every date in the horizon."""
+        with SessionLocal() as session:
+            query = (
+                session.query(Order)
+                .options(joinedload(Order.customer))
+                .filter(Order.cd_id == cd_id, Order.status == status.upper())
+            )
+            if delivery_date != "all":
+                query = query.filter(Order.delivery_date == _as_date(delivery_date))
+            return [_order_to_dict(o) for o in query.order_by(Order.delivery_date, Order.window_start).all()]
+
+    def get_day_summary(self, cd_id: str = _DEFAULT_CD) -> list[dict[str, Any]]:
+        """Per planning day: counts by status (feeds the dashboard date tabs and the copilot prompt)."""
+        with SessionLocal() as session:
+            rows = []
+            for day in planning_days():
+                counts = {
+                    st: session.query(Order)
+                    .filter(Order.cd_id == cd_id, Order.delivery_date == day, Order.status == st)
+                    .count()
+                    for st in ("PENDING", "DISPATCHED", "SKIPPED")
+                }
+                rows.append({"date": day.isoformat(), **{k.lower(): v for k, v in counts.items()}})
+            return rows
+
     def get_available_fleet(self, cd_id: str = _DEFAULT_CD) -> list[dict[str, Any]]:
-        """Queries available fleet from the database."""
         with SessionLocal() as session:
             fleet = (
                 session.query(Vehicle).filter(Vehicle.home_cd_id == cd_id, Vehicle.current_status == "AVAILABLE").all()
             )
-
             return [_vehicle_to_dict(v) for v in fleet]
 
     def get_all_customer_rules(self) -> list[dict[str, Any]]:
-        """Queries all active customer dock and operational rules."""
         with SessionLocal() as session:
             rules = session.query(CustomerRule).options(joinedload(CustomerRule.customer)).all()
             return [_rule_to_dict(r) for r in rules]
 
+    # ------------------------------------------------------------ writes
     def add_customer_rule(self, customer_name: str, rule_category: str, content: str, priority: str = "HIGH") -> None:
-        """Inserts a new rule into database for a customer."""
         with SessionLocal() as session:
             cust = session.query(Customer).filter(Customer.name.ilike(f"%{customer_name}%")).first()
             if not cust:
-                # Create customer if doesn't exist
                 cust = Customer(
                     code=f"CUST-{_stable_digits(customer_name, 4)}",
                     name=customer_name,
@@ -162,14 +204,9 @@ class LogisticsRepository:
                 )
                 session.add(cust)
                 session.flush()
-
-            rule = CustomerRule(
-                customer_id=cust.id,
-                rule_category=rule_category,
-                content=content,
-                priority=priority,
+            session.add(
+                CustomerRule(customer_id=cust.id, rule_category=rule_category, content=content, priority=priority)
             )
-            session.add(rule)
             session.commit()
 
     def save_dispatch_manifest(
@@ -184,55 +221,77 @@ class LogisticsRepository:
         human_verdict: str | None,
         human_feedback: str | None,
         manifest_dict: Mapping[str, Any],
+        plan_date: str | date | None = None,
     ) -> None:
-        """Persists the final dispatch manifest and updates order statuses."""
+        """Persist the manifest and mark its orders DISPATCHED when approved."""
         with SessionLocal() as session:
-            manifest = DispatchManifest(
-                manifest_id=manifest_id,
-                cd_id=cd_id,
-                created_at=datetime.now(timezone.utc),
-                total_orders=total_orders,
-                total_vehicles=total_vehicles,
-                total_weight_kg=total_weight_kg,
-                total_volume_m3=total_volume_m3,
-                status=status,
-                human_verdict=human_verdict,
-                human_feedback=human_feedback,
-                manifest_payload_json=json.dumps(manifest_dict, ensure_ascii=False),
+            session.add(
+                DispatchManifest(
+                    manifest_id=manifest_id,
+                    cd_id=cd_id,
+                    plan_date=_as_date(plan_date),
+                    created_at=datetime.now(timezone.utc),
+                    total_orders=total_orders,
+                    total_vehicles=total_vehicles,
+                    total_weight_kg=total_weight_kg,
+                    total_volume_m3=total_volume_m3,
+                    status=status,
+                    human_verdict=human_verdict,
+                    human_feedback=human_feedback,
+                    manifest_payload_json=json.dumps(manifest_dict, ensure_ascii=False),
+                )
             )
-            session.add(manifest)
-
-            # If dispatched, update order status to ALLOCATED / DISPATCHED
             if status == "DISPATCHED":
                 order_ids = [
                     stop["order_id"] for route in manifest_dict.get("routes", []) for stop in route.get("stops", [])
                 ]
-
                 session.query(Order).filter(Order.order_number.in_(order_ids)).update(
                     {"status": "DISPATCHED"}, synchronize_session=False
                 )
-
             session.commit()
 
-    def reset_orders_status(self, cd_id: str = _DEFAULT_CD, include_skipped: bool = False) -> None:
-        """Bring DISPATCHED orders back to PENDING before a new planning run (SKIPPED ones stay out unless asked)."""
+    def reset_orders_status(
+        self, cd_id: str = _DEFAULT_CD, delivery_date: str | date | None = None, include_skipped: bool = False
+    ) -> None:
+        """Bring a day's DISPATCHED orders back to PENDING before re-planning (SKIPPED stay out unless asked)."""
         statuses = ["DISPATCHED", "SKIPPED"] if include_skipped else ["DISPATCHED"]
         with SessionLocal() as session:
-            session.query(Order).filter(Order.cd_id == cd_id, Order.status.in_(statuses)).update(
-                {"status": "PENDING", "skip_reason": None}, synchronize_session=False
-            )
+            session.query(Order).filter(
+                Order.cd_id == cd_id, Order.delivery_date == _as_date(delivery_date), Order.status.in_(statuses)
+            ).update({"status": "PENDING", "skip_reason": None}, synchronize_session=False)
             session.commit()
+
+    def generate_random_orders(
+        self, cd_id: str = _DEFAULT_CD, count: int = 40, days: int | None = None
+    ) -> list[dict[str, Any]]:
+        """
+        Replace the whole planning horizon with `count` fresh refrigerated orders per day
+        (one per distinct customer, capped by the pool). Returns today's pending orders.
+        """
+        from logistics_tower.db.seed import sync_customers  # local import: seed depends on this module
+
+        horizon = planning_days(days)
+        with SessionLocal() as session:
+            sync_customers(session)
+            session.query(Order).filter(Order.cd_id == cd_id, Order.delivery_date.in_(horizon)).delete(
+                synchronize_session=False
+            )
+            customers = [_customer_for_factory(c) for c in session.query(Customer).all()]
+            for o in build_orders_for_days(customers, count, random.Random(), cd_id=cd_id, days=horizon):
+                session.add(Order(**o))
+            session.commit()
+        return self.get_pending_orders(cd_id)
 
     # ------------------------------------------------------------ copilot
     def find_customers(self, query: str, limit: int = 5) -> list[dict[str, Any]]:
-        """Fuzzy customer lookup by name / code / neighbourhood / city, with today's order counts."""
+        """Fuzzy customer lookup by name / code / neighbourhood / city, with their orders in the horizon."""
         q = normalize_text(query)
         if not q:
             return []
+        horizon = planning_days()
         with SessionLocal() as session:
-            customers = session.query(Customer).all()
             scored: list[tuple[float, Customer]] = []
-            for c in customers:
+            for c in session.query(Customer).all():
                 name = normalize_text(c.name)
                 haystack = f"{name} {normalize_text(c.code)} {normalize_text(c.neighborhood)} {normalize_text(c.city)}"
                 if q == name or q == normalize_text(c.code):
@@ -249,53 +308,79 @@ class LogisticsRepository:
             scored.sort(key=lambda t: (-t[0], t[1].name))
             result = []
             for score, c in scored[:limit]:
-                pending = (
+                orders = (
                     session.query(Order)
-                    .filter(Order.customer_id == c.id, Order.status.in_(["PENDING", "DISPATCHED"]))
-                    .count()
+                    .filter(Order.customer_id == c.id, Order.delivery_date.in_(horizon))
+                    .order_by(Order.delivery_date)
+                    .all()
                 )
-                skipped = session.query(Order).filter(Order.customer_id == c.id, Order.status == "SKIPPED").count()
-                data = _customer_to_dict(c, pending, skipped)
+                data = _customer_to_dict(c)
                 data["match_score"] = round(score, 2)
+                data["orders"] = [
+                    {"order_id": o.order_number, "date": o.delivery_date.isoformat(), "status": o.status}
+                    for o in orders
+                ]
+                data["pending_orders"] = sum(1 for o in orders if o.status in ACTIVE_STATUSES)
+                data["skipped_orders"] = sum(1 for o in orders if o.status == "SKIPPED")
                 result.append(data)
             return result
 
-    def skip_customer_orders(self, customer_id: int, reason: str) -> list[str]:
-        """Take a customer's pending orders out of today's plan. Returns the affected order numbers."""
+    def _customer_orders(self, session, customer_id: int, day: date, statuses: tuple[str, ...]) -> list[Order]:
+        return (
+            session.query(Order)
+            .filter(Order.customer_id == customer_id, Order.delivery_date == day, Order.status.in_(statuses))
+            .all()
+        )
+
+    def skip_customer_orders(self, customer_id: int, reason: str, delivery_date: str | date | None = None) -> list[str]:
+        """Take a customer's orders of one day out of that day's plan (kept as SKIPPED)."""
+        day = _as_date(delivery_date)
         with SessionLocal() as session:
-            # A plan that was already approved (DISPATCHED) is still today's plan: skipping must cover it too,
-            # because re-planning brings DISPATCHED orders back to PENDING.
-            orders = (
-                session.query(Order)
-                .filter(Order.customer_id == customer_id, Order.status.in_(["PENDING", "DISPATCHED"]))
-                .all()
-            )
+            orders = self._customer_orders(session, customer_id, day, ACTIVE_STATUSES)
             for o in orders:
                 o.status = "SKIPPED"
                 o.skip_reason = reason[:255]
             session.commit()
             return [o.order_number for o in orders]
 
-    def restore_customer_orders(self, customer_id: int) -> list[str]:
-        """Put a customer's skipped orders back into today's plan."""
+    def restore_customer_orders(self, customer_id: int, delivery_date: str | date | None = None) -> list[str]:
+        day = _as_date(delivery_date)
         with SessionLocal() as session:
-            orders = session.query(Order).filter(Order.customer_id == customer_id, Order.status == "SKIPPED").all()
+            orders = self._customer_orders(session, customer_id, day, ("SKIPPED",))
             for o in orders:
                 o.status = "PENDING"
                 o.skip_reason = None
             session.commit()
             return [o.order_number for o in orders]
 
-    def reschedule_customer_window(
-        self, customer_id: int, window_start: str, window_end: str, remember: bool = True
-    ) -> list[str]:
-        """Change the receiving window of today's orders and, optionally, remember it for future orders."""
+    def move_customer_orders(self, customer_id: int, from_date: str | date | None, to_date: str | date) -> list[str]:
+        """Move a customer's orders (any status) from one delivery day to another; they become PENDING there."""
+        src, dst = _as_date(from_date), _as_date(to_date)
         with SessionLocal() as session:
-            orders = (
-                session.query(Order)
-                .filter(Order.customer_id == customer_id, Order.status.in_(["PENDING", "DISPATCHED", "SKIPPED"]))
-                .all()
+            orders = self._customer_orders(session, customer_id, src, ("PENDING", "DISPATCHED", "SKIPPED"))
+            for o in orders:
+                o.delivery_date = dst
+                o.status = "PENDING"
+                o.skip_reason = None
+            session.commit()
+            return [o.order_number for o in orders]
+
+    def reschedule_customer_window(
+        self,
+        customer_id: int,
+        window_start: str,
+        window_end: str,
+        remember: bool = True,
+        delivery_date: str | date | None = None,
+    ) -> list[str]:
+        """Change the receiving window of a customer's orders on one day (or every day when `delivery_date="all"`)."""
+        with SessionLocal() as session:
+            query = session.query(Order).filter(
+                Order.customer_id == customer_id, Order.status.in_(("PENDING", "DISPATCHED", "SKIPPED"))
             )
+            if delivery_date != "all":
+                query = query.filter(Order.delivery_date == _as_date(delivery_date))
+            orders = query.all()
             for o in orders:
                 o.window_start = window_start
                 o.window_end = window_end
@@ -306,16 +391,6 @@ class LogisticsRepository:
                     cust.window_override_end = window_end
             session.commit()
             return [o.order_number for o in orders]
-
-    def get_orders_by_status(self, status: str, cd_id: str = _DEFAULT_CD) -> list[dict[str, Any]]:
-        with SessionLocal() as session:
-            orders = (
-                session.query(Order)
-                .options(joinedload(Order.customer))
-                .filter(Order.cd_id == cd_id, Order.status == status)
-                .all()
-            )
-            return [_order_to_dict(o) for o in orders]
 
     def add_operator_memory(self, category: str, content: str) -> None:
         with SessionLocal() as session:
@@ -335,34 +410,6 @@ class LogisticsRepository:
                 for r in rows
             ]
 
-    def generate_random_orders(self, cd_id: str = _DEFAULT_CD, count: int = 40) -> list[dict[str, Any]]:
-        """
-        Replace the pending order set with `count` fresh refrigerated orders, one per
-        distinct customer of the regional pool (capped by the pool size).
-        """
-        from logistics_tower.db.seed import sync_customers  # local import: seed depends on this module
-
-        with SessionLocal() as session:
-            sync_customers(session)
-            session.query(Order).filter(Order.cd_id == cd_id, Order.status == "PENDING").delete(
-                synchronize_session=False
-            )
-            customers = [
-                {
-                    "id": c.id,
-                    "segment": c.segment,
-                    "name": c.name,
-                    "window_override_start": c.window_override_start,
-                    "window_override_end": c.window_override_end,
-                }
-                for c in session.query(Customer).all()
-            ]
-            for o in build_orders(customers, count, random.Random(), cd_id=cd_id):
-                session.add(Order(**o))
-            session.commit()
-
-        return self.get_pending_orders(cd_id)
-
 
 _repo: LogisticsRepository | None = None
 
@@ -372,3 +419,6 @@ def get_repository() -> LogisticsRepository:
     if _repo is None:
         _repo = LogisticsRepository()
     return _repo
+
+
+__all__ = ["ACTIVE_STATUSES", "LogisticsRepository", "get_repository", "normalize_text", "today"]

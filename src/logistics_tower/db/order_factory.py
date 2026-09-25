@@ -7,7 +7,7 @@ idempotent seeder (fixed RNG) and by the "generate orders" endpoint (fresh RNG).
 """
 
 import random
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Any
 
 from logistics_tower.db.address_pool import (
@@ -107,7 +107,9 @@ _FROZEN_SEGMENTS = {SORVETERIA}
 _FROZEN_PROBABILITY = {PEIXARIA: 0.6, ACOUGUE: 0.4, SUPERMERCADO: 0.3, ATACADO: 0.3}
 
 
-def build_order(customer: dict[str, Any], order_number: str, rng: random.Random, cd_id: str) -> dict[str, Any]:
+def build_order(
+    customer: dict[str, Any], order_number: str, rng: random.Random, cd_id: str, delivery_date: date
+) -> dict[str, Any]:
     """Create one refrigerated order for a customer dict with at least `segment` and `id`."""
     segment = customer.get("segment") or SUPERMERCADO
     profile = _PROFILES.get(segment, _PROFILES[SUPERMERCADO])
@@ -136,6 +138,7 @@ def build_order(customer: dict[str, Any], order_number: str, rng: random.Random,
         "order_number": order_number,
         "customer_id": customer["id"],
         "cd_id": cd_id,
+        "delivery_date": delivery_date,
         "weight_kg": weight,
         "volume_m3": volume,
         "cargo_type": "refrigerated",
@@ -154,13 +157,33 @@ def build_orders(
     rng: random.Random,
     cd_id: str,
     prefix: str | None = None,
+    delivery_date: date | None = None,
 ) -> list[dict[str, Any]]:
     """
-    One order per distinct customer, up to `count` (capped by the customer pool).
+    One order per distinct customer, up to `count` (capped by the customer pool), for one delivery date.
     Customers are sampled without replacement so every stop is a different address.
     """
     if not customers or count <= 0:
         return []
     chosen = rng.sample(customers, min(count, len(customers)))
     stamp = prefix or datetime.now(timezone.utc).strftime("%m%d%H%M")
-    return [build_order(c, f"ORD-ITJ-{stamp}-{i + 1:03d}", rng, cd_id) for i, c in enumerate(chosen)]
+    day = delivery_date or date.today()
+    return [
+        build_order(c, f"ORD-ITJ-{stamp}-{day.strftime('%d%m')}-{i + 1:03d}", rng, cd_id, day)
+        for i, c in enumerate(chosen)
+    ]
+
+
+def build_orders_for_days(
+    customers: list[dict[str, Any]],
+    count_per_day: int,
+    rng: random.Random,
+    cd_id: str,
+    days: list[date],
+    prefix: str | None = None,
+) -> list[dict[str, Any]]:
+    """`count_per_day` orders for each date in `days` (each day samples its own customers)."""
+    orders: list[dict[str, Any]] = []
+    for day in days:
+        orders.extend(build_orders(customers, count_per_day, rng, cd_id, prefix=prefix, delivery_date=day))
+    return orders

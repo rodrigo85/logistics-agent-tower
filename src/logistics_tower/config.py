@@ -5,6 +5,7 @@ Every setting can be overridden by an environment variable with the same name in
 or by a `.env` file in the working directory. See `.env.example` for the full reference.
 """
 
+from datetime import date
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
@@ -67,6 +68,10 @@ class Settings(BaseSettings):
     max_shift_hours: float = 11.0  # legal daily driving shift
     urban_speed_kmh: float = 32.0  # fallback average speed when Google Maps is not configured
     road_circuity_factor: float = 1.35  # haversine -> road distance multiplier
+
+    # --- Planning horizon ----------------------------------------------------
+    planning_horizon_days: int = 3  # the WMS keeps orders for today + the next days
+    reference_date: date | None = None  # freeze "today" (demos, reproducible evals); default: real date
 
     # --- Human-in-the-Loop gate ----------------------------------------------
     hitl_auto_approve: bool = False

@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, HTTPException
 
-from logistics_tower.api.dependencies import get_plan_cache
+from logistics_tower.api.dependencies import get_dispatch_planner
 from logistics_tower.config import settings
 from logistics_tower.db.repository import get_repository
 
@@ -22,7 +22,7 @@ def get_vehicle_itinerary(identifier: str):
     """
     wanted = _normalise(identifier)
 
-    for route in get_plan_cache().routes:
+    for route in get_dispatch_planner().latest.routes:
         if wanted in (_normalise(route.get("plate", "")), _normalise(route.get("vehicle_id", ""))):
             return route
 

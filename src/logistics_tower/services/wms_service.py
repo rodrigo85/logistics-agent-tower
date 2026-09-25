@@ -17,10 +17,10 @@ class WMSService:
     def __init__(self):
         self.repo = get_repository()
 
-    def get_pending_orders(self, cd_id: str) -> list[dict[str, Any]]:
-        """Queries pending delivery orders directly from the database."""
-        orders = self.repo.get_pending_orders(cd_id)
-        logger.info(f"WMS: Retrieved {len(orders)} pending orders from SQL database for {cd_id}")
+    def get_pending_orders(self, cd_id: str, delivery_date: str | None = None) -> list[dict[str, Any]]:
+        """Pending orders of one delivery date (default: today)."""
+        orders = self.repo.get_pending_orders(cd_id, delivery_date=delivery_date)
+        logger.info(f"WMS: Retrieved {len(orders)} pending orders for {cd_id} on {delivery_date or 'today'}")
         return orders
 
 

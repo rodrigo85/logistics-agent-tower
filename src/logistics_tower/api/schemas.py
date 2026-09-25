@@ -2,6 +2,7 @@
 Pydantic schemas for the Logistics Control Tower REST API.
 """
 
+from datetime import date
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
@@ -15,6 +16,7 @@ HumanVerdict = Literal["APPROVED", "REJECTED", "OVERRIDE"]
 class DispatchRequest(BaseModel):
     cd_id: str = Field(default=settings.default_cd_id, description="Distribution Center identifier")
     auto_approve: bool = Field(default=False, description="Bypass the Human-in-the-Loop interrupt")
+    plan_date: date | None = Field(default=None, description="Delivery date to plan (default: today)")
 
 
 class ResumeHITLRequest(BaseModel):
@@ -25,6 +27,7 @@ class ResumeHITLRequest(BaseModel):
 
 class DispatchResponse(BaseModel):
     thread_id: str
+    plan_date: str | None = None
     status: DispatchStatus
     requires_approval: bool
     approval_reason: str | None = None
@@ -44,7 +47,9 @@ class GenerateOrdersResponse(BaseModel):
     status: Literal["ok"]
     message: str
     count: int
+    days: int
     orders: list[dict[str, Any]]
+    horizon: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class TrafficStatusResponse(BaseModel):
@@ -65,6 +70,7 @@ class ChatResponse(BaseModel):
     actions: list[dict[str, Any]] = Field(default_factory=list)
     replanned: bool = False
     dispatch: dict[str, Any] | None = None
+    dispatches: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class CopilotStatusResponse(BaseModel):
@@ -82,3 +88,4 @@ class AgentsResponse(BaseModel):
     mcp_tools: list[str]
     copilot_tools: list[str]
     latest_plan: dict[str, Any]
+    horizon: list[dict[str, Any]] = Field(default_factory=list)
